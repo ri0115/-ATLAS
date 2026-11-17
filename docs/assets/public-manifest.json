@@ -1,0 +1,10 @@
+{
+  "type": "public-overview",
+  "fiscal_year": 2024,
+  "procedure_code_count": 9275,
+  "secondary_area_count": 330,
+  "data_policy": "public-summary-only",
+  "includes_protected_data": false,
+  "details_api_enabled": false,
+  "source_description": "NDB 11th open data / fiscal 2024; summary metadata only"
+}
