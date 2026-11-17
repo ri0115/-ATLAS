@@ -30,7 +30,7 @@
     </section>
 
     <div class="notice" role="status"><span class="notice-mark" aria-hidden="true">i</span>
-      <div><b>公開プレビュー版</b><p>画面構成を先行公開しています。医療圏別参考換算額、コード別明細、算定条件、監査データはこのサイトに同梱していません。検索用の認証APIも現在は未接続です。</p></div>
+      <div><b>公開プレビュー版</b><p>2024年度のCT・MRI・超音波の医療圏別集計は、<a href="https://reimbursement-atlas-private.vercel.app/">認証付き詳細サイト</a>で確認できます。</p></div>
     </div>
 
     <nav class="tabs" aria-label="メイン画面">
@@ -41,7 +41,7 @@
     </nav>
 
     <section id="panel-region" class="panel" aria-labelledby="title-region">
-      <div class="panel-head"><div><h2 id="title-region">地域プロファイル</h2><p>全国 → 都道府県 → 二次医療圏の診療報酬構造を確認</p></div><span class="mode">認証API接続前</span></div>
+      <div class="panel-head"><div><h2 id="title-region">地域プロファイル</h2><p>全国 → 都道府県 → 二次医療圏の診療報酬構造を確認</p></div><span class="mode">詳細は認証付きサイトへ</span></div>
       <div class="filter-row">
         <label>地域選択 <select id="region-select" disabled><option>詳細データ公開準備中</option></select></label>
         <label>分析区分 <select id="category-select"><option value="ALL">全区分（A〜O）</option></select></label>
@@ -49,8 +49,8 @@
       </div>
       <div class="placeholder">
         <span class="placeholder-icon" aria-hidden="true">◫</span>
-        <h3>地域ごとの金額・ランキングは非公開データ領域に保管</h3>
-        <p>ここには将来、認証済み利用者に対して地域の参考換算額、A〜O構成比、上位診療行為をAPIから取得して表示します。</p>
+        <h3>CT・MRI・超音波の地域別集計</h3>
+        <p><a href="https://reimbursement-atlas-private.vercel.app/">認証付き詳細サイトを開く</a>と、医療圏ごとの参考換算額を確認できます。</p>
         <p id="category-hint" class="hint">現在の選択：全区分</p>
       </div>
       <h3 class="section-caption">診療報酬の区分</h3>
