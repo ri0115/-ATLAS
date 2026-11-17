@@ -1,0 +1,19 @@
+name: Public data leak checks (pull requests)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate allowlisted public release files
+        run: python3 scripts/check_public.py
+      - name: Validate JavaScript syntax
+        run: node --check docs/assets/app.js
