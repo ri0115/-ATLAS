@@ -1,0 +1,26 @@
+# Sensitive datasets must NEVER be committed to this public repository.
+private/
+data/
+protected/
+exports/
+*.sqlite
+*.sqlite3
+*.db
+*.csv
+*.tsv
+*.parquet
+*.arrow
+*.feather
+*.xlsx
+*.xls
+*.zip
+*.gz
+*.7z
+*.pdf
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+__pycache__/
