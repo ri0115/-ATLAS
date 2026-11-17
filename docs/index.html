@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="2024年度診療報酬を地域別に分析するMedical Reimbursement ATLAS。公開版は概要情報のみを表示します。">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'">
+  <title>診療報酬 ATLAS | Medical Reimbursement Intelligence</title>
+  <link rel="stylesheet" href="./assets/style.css">
+  <script src="./assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">本文へ移動</a>
+  <header class="masthead">
+    <div class="mast-inner">
+      <div class="brand">
+        <span class="eyebrow">MEDICAL REIMBURSEMENT INTELLIGENCE / 2024</span>
+        <h1>診療報酬 <span>ATLAS</span> <small>PUBLIC PREVIEW</small></h1>
+      </div>
+      <div class="mast-meta">第11回NDBオープンデータ<br>2024年4月〜2025年3月<br><span>公開用UI / 詳細データは非公開</span></div>
+    </div>
+  </header>
+  <main id="main" class="shell">
+    <section class="stat-grid" aria-label="アトラスの概要">
+      <article class="stat"><span>対象となる診療行為</span><strong id="meta-codes">—</strong><small>9桁コード数（プロジェクト概要）</small></article>
+      <article class="stat"><span>地域区分</span><strong id="meta-areas">—</strong><small>二次医療圏（再編後）</small></article>
+      <article class="stat"><span>分析年度</span><strong id="meta-fy">—</strong><small>公開NDB統計の対象年度</small></article>
+      <article class="stat"><span>公開範囲</span><strong class="status-value">概要のみ</strong><small>詳細値・算定要件は非公開</small></article>
+    </section>
+
+    <div class="notice" role="status"><span class="notice-mark" aria-hidden="true">i</span>
+      <div><b>公開プレビュー版</b><p>画面構成を先行公開しています。医療圏別参考換算額、コード別明細、算定条件、監査データはこのサイトに同梱していません。検索用の認証APIも現在は未接続です。</p></div>
+    </div>
+
+    <nav class="tabs" aria-label="メイン画面">
+      <button class="tab" type="button" data-tab="region" aria-current="page">地域プロファイル</button>
+      <button class="tab" type="button" data-tab="procedure">診療行為・算定要件</button>
+      <button class="tab" type="button" data-tab="compare">地域比較</button>
+      <button class="tab" type="button" data-tab="sources">データ・出典</button>
+    </nav>
+
+    <section id="panel-region" class="panel" aria-labelledby="title-region">
+      <div class="panel-head"><div><h2 id="title-region">地域プロファイル</h2><p>全国 → 都道府県 → 二次医療圏の診療報酬構造を確認</p></div><span class="mode">認証API接続前</span></div>
+      <div class="filter-row">
+        <label>地域選択 <select id="region-select" disabled><option>詳細データ公開準備中</option></select></label>
+        <label>分析区分 <select id="category-select"><option value="ALL">全区分（A〜O）</option></select></label>
+        <label>公費区分 <select id="funding-select" disabled><option>認証データ未接続</option></select></label>
+      </div>
+      <div class="placeholder">
+        <span class="placeholder-icon" aria-hidden="true">◫</span>
+        <h3>地域ごとの金額・ランキングは非公開データ領域に保管</h3>
+        <p>ここには将来、認証済み利用者に対して地域の参考換算額、A〜O構成比、上位診療行為をAPIから取得して表示します。</p>
+        <p id="category-hint" class="hint">現在の選択：全区分</p>
+      </div>
+      <h3 class="section-caption">診療報酬の区分</h3>
+      <div id="category-grid" class="category-grid" aria-label="診療報酬区分"></div>
+    </section>
+
+    <section id="panel-procedure" class="panel" aria-labelledby="title-procedure" hidden>
+      <div class="panel-head"><div><h2 id="title-procedure">診療行為・算定要件</h2><p>コード・名称・区分で検索し、一次資料へたどる</p></div><span class="mode">認証API接続前</span></div>
+      <div class="search-layout">
+        <div class="search-box">
+          <label for="procedure-query">診療行為を探す</label>
+          <input id="procedure-query" type="search" placeholder="例：D215、超音波、MRI、初診料" autocomplete="off" maxlength="80">
+          <button type="button" id="procedure-search" class="primary">検索する</button>
+          <p class="input-help">公開画面にコードの明細データは置いていません。</p>
+          <p class="search-feedback" id="procedure-feedback" aria-live="polite"></p>
+        </div>
+        <div class="detail-box">
+          <h3>診療行為の詳細</h3>
+          <p>認証データ接続後、左側で選んだ行為について点数、地域別の参考換算額、算定条件、公式文献の参照先をここへ表示します。</p>
+          <div class="fake-line short"></div><div class="fake-line"></div><div class="fake-line medium"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-compare" class="panel" aria-labelledby="title-compare" hidden>
+      <div class="panel-head"><div><h2 id="title-compare">地域比較</h2><p>人口規模・地域特化指数・診療報酬構成比で比較</p></div><span class="mode">認証API接続前</span></div>
+      <div class="feature-grid">
+        <article><h3>330医療圏ランキング</h3><p>参考換算額・人口1人当たり・地域特化指数の切替</p></article>
+        <article><h3>47都道府県比較</h3><p>医療圏を集約した地域構造・全国平均との差</p></article>
+        <article><h3>技術別分析</h3><p>CT・MRI・超音波の本体／専用加算／共通診断料</p></article>
+      </div>
+      <div class="placeholder compact"><h3>比較用データは保護されています</h3><p>公開側に全件CSVやJSONを配置せず、将来の認証付きAPIから絞り込んだ結果だけ取得します。</p></div>
+    </section>
+
+    <section id="panel-sources" class="panel" aria-labelledby="title-sources" hidden>
+      <div class="panel-head"><div><h2 id="title-sources">データ・出典</h2><p>分析の前提、公開範囲、データの取り扱い</p></div></div>
+      <div class="guide-grid">
+        <article><h3>対象データ</h3><p>第11回NDBオープンデータ（2024年度）を基礎として、都道府県・二次医療圏単位の算定構造を分析する構想です。</p></article>
+        <article><h3>金額の定義</h3><p>参考換算額は「公開算定回数 × 診療報酬点数 × 10円」です。実際の医療機関売上・利益やDPC包括の実請求額ではありません。</p></article>
+        <article><h3>欠損と秘匿</h3><p>少数件数の秘匿、未設定点数、包括評価、年度途中の改定を区別します。未公表値を0件として扱いません。</p></article>
+        <article><h3>公開と非公開</h3><p>このリポジトリで公開するのはUI、非機密の概要・仕様・出典リンクです。9桁コード別明細や地域別の算定金額は掲載しません。</p></article>
+      </div>
+      <p class="source-note">参照先：<a href="https://www.mhlw.go.jp/" rel="noopener noreferrer" target="_blank">厚生労働省</a> ／ <a href="https://www.e-stat.go.jp/" rel="noopener noreferrer" target="_blank">政府統計の総合窓口 e-Stat</a></p>
+    </section>
+
+    <footer class="footer"><span>診療報酬 ATLAS / PUBLIC UI</span><span id="api-status">DATA LAYER: PRIVATE</span></footer>
+  </main>
+</body>
+</html>
