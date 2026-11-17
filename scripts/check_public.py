@@ -35,6 +35,8 @@ SENSITIVE = [
 problems = []
 files = subprocess.check_output(["git", "-C", str(ROOT), "ls-files"], text=True).splitlines()
 for rel in files:
+    if not (rel in {"README.md", ".gitignore"} or rel.startswith(("docs/", "scripts/", ".github/workflows/"))):
+        problems.append(f"Unapproved path in public Git: {rel}")
     if pathlib.PurePosixPath(rel).suffix.lower() in DISALLOWED_SUFFIXES:
         problems.append(f"Forbidden artifact tracked in public Git: {rel}")
     if rel.startswith(("data/", "private/", "protected/", "exports/")):
