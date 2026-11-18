@@ -136,3 +136,8 @@ node --check docs/assets/app.js
 - `GET /v1/procedures/meta`：件数と原票照合の監査情報
 - `GET /v1/procedures?q=D215&category=ALL&page=0`：25件単位の検索
 - `GET /v1/procedures/{code}?scope=include&grain=secondary&region=1301&setting=all&addon=all`：コードの地域詳細（許可リスト経由）
+
+
+## 地域特化 TOP100（2024年度）
+
+地域プロファイルの「9桁コードの地域特化」から、47都道府県・330二次医療圏を選択可能。Vercel上に既存の全コード原票を再利用し、`GET /v1/specialization` で地域・公費・原票粒度・順位基準・A〜O区分・最低参考換算額を指定して最大100件を取得。集計値は地域全区分合計と全国同一粒度の合計を照合し、不一致の場合は応答しない。超過額は地域総額×全国当該コード構成比に対する差額。LQは構成比同士の比、人口当たり全国平均比は100基準。旧秋田8圏域は現行3圏域へ合算。行クリックで個別コード詳細へ同一地域・同一公費条件を引継ぐ。秘匿・未設定点数を補完しない。公開GitHubにはデータを含まない。
