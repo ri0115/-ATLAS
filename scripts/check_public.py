@@ -73,7 +73,7 @@ if set(manifest) != expected:
 if manifest.get("includes_protected_data") is not False:
     problems.append("A protected data field was enabled in the public manifest")
 if manifest.get("details_api_enabled") is not True:
-    problems.append("Protected bridge integration flag must be true")
+    problems.append("Protected API integration flag must be true")
 if manifest.get("procedure_code_count") != 9275 or manifest.get("secondary_area_count") != 330:
     problems.append("Published overview counts differ from approved initial release")
 
