@@ -24,7 +24,8 @@ DISALLOWED_SUFFIXES = {
 WEB_SUFFIXES = {".html", ".css", ".js", ".json", ".svg", ".png", ".jpg", ".webp", ".ico"}
 EXPECTED_SITE_FILES = {
     "index.html", ".nojekyll",
-    "assets/style.css", "assets/app.js", "assets/public-manifest.json"
+    "assets/style.css", "assets/app.js", "assets/public-manifest.json",
+    "assets/medical-areas-330.svg"
 }
 SENSITIVE = [
     re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
@@ -32,6 +33,10 @@ SENSITIVE = [
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
 ]
+# The reviewed public-sector geographic asset contains no reimbursement values.
+# Its exact immutable Git blob is pinned; all other large assets remain forbidden.
+APPROVED_BOUNDARY_ASSET = "assets/medical-areas-330.svg"
+APPROVED_BOUNDARY_BLOB = "670af173ddbfa3e8c4ef293b09b159b1362dd484"
 problems = []
 files = subprocess.check_output(["git", "-C", str(ROOT), "ls-files"], text=True).splitlines()
 for rel in files:
@@ -47,7 +52,15 @@ for p in SITE.rglob("*"):
         continue
     rel = p.relative_to(SITE).as_posix()
     if p.stat().st_size > 150_000:
-        problems.append(f"Public file unexpectedly large: {rel}")
+        approved_geo = (
+            rel == APPROVED_BOUNDARY_ASSET
+            and p.stat().st_size <= 3_200_000
+            and subprocess.check_output(
+                ["git", "-C", str(ROOT), "hash-object", str(p)], text=True
+            ).strip() == APPROVED_BOUNDARY_BLOB
+        )
+        if not approved_geo:
+            problems.append(f"Public file unexpectedly large: {rel}")
     if rel != ".nojekyll" and p.suffix.lower() not in WEB_SUFFIXES:
         problems.append(f"Unknown public artifact type: {rel}")
     if p.suffix.lower() in {".js", ".html", ".css", ".json"}:
