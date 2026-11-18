@@ -12,7 +12,7 @@ GitHub Pages: https://ri0115.github.io/-ATLAS/
 
 - `docs/index.html`：4タブ画面。診療行為データや集計金額は埋め込んでいません
 - `docs/assets/style.css`：配色・レイアウト・レスポンシブデザイン
-- `docs/assets/app.js`：UI操作。認証データAPIは未接続
+- `docs/assets/app.js`：公開UI操作。詳細APIへの直接接続は行わず、認証付きサイトへ案内
 - `docs/assets/public-manifest.json`：**公開を許可した件数などの概要のみ**
 - `.github/workflows/pages.yml`：GitHub Pagesへ静的サイトをデプロイ
 - `scripts/check_public.py`：公開対象外ファイルや巨大アセットを検出
@@ -30,9 +30,17 @@ GitHub Pages: https://ri0115.github.io/-ATLAS/
 | 年度内点数改定履歴・監査の生データ | しない | ✅ |
 | 全件CSV/SQLite、生成済み大容量HTML | しない | ✅ |
 
-現段階で認証APIは未実装です。表示画面は**公開プレビュー**であり、ログインできると誤認させるボタンを配置していません。
+## 認証付き詳細サイト（稼働中）
 
-### 今後の本番構成（実装前）
+https://reimbursement-atlas-private.vercel.app/
+
+2024年度のCT・MRI・超音波の収録済み参考換算額を、Vercel Authenticationで保護した別サイトで閲覧できます。2026-11-18更新：全国・47都道府県・330二次医療圏の階層別集計、2地域比較、および上位10件の地域ランキング（技術切替、医療圏の都道府県絞り込み）を実装。集計対象医療圏数を表示し、未収録値はゼロ扱いしません。全国・都道府県の値は収録医療圏の合算であり、完全な診療報酬総額ではありません。
+
+詳細サイトの実データはVercel側の非公開ファイルにあり、この公開リポジトリとは分離されています。公開マニフェストの `details_api_enabled: false` は**GitHub Pagesからの直接API呼び出しが無効**という意味です。
+
+現行サイトはVercelのプロジェクト閲覧権限で保護しています。利用者別の許可地域、個別コード明細、人口補正、共通診断料や公費区分の独立集計、レート制限・アクセス監査は未実装です。ランキングAPIは上位10件だけを返し、全件出力機能は提供していません。
+
+### 今後の拡張構成（構想）
 
 ```text
 [ブラウザ]
@@ -49,7 +57,18 @@ GitHub Pages: https://ri0115.github.io/-ATLAS/
 
 認証・認可を**API側で行う**こと。認証後に返すデータは閲覧者から取得可能であり、完全なコピー防止はできません。閲覧権限、返す粒度、CSV出力上限、表示する元データの二次利用条件などを設計します。詳細レスポンスには`Cache-Control: private, no-store`を付与し、非公開ストレージの資格情報をブラウザへ渡しません。
 
-#### API契約案（まだ呼び出しません）
+#### 現行の認証付き詳細サイトのAPI
+
+| API | 実装済み機能 |
+|---|---|
+| `GET /v1/prefectures` | 都道府県一覧 |
+| `GET /v1/areas?pref=13` | 医療圏一覧 |
+| `GET /v1/areas/{code}/summary?scope=include` | 全国（JP）・都道府県（2桁）・医療圏（4桁）の収録済みCT・MRI・超音波集計、収録値の有無・対象医療圏数 |
+| `GET /v1/ranking?level=area&pref=JP&metric=CT` | 上位10件の地域ランキング。level=area/prefecture、metric=CT/MRI/US |
+
+詳細APIはVercel側のみで稼働し、公開サイトから直接呼び出しません。
+
+#### 拡張API契約案（未実装）
 
 | API | 機能 | 必須条件 |
 |---|---|---|
@@ -59,7 +78,7 @@ GitHub Pages: https://ri0115.github.io/-ATLAS/
 | `GET /v1/procedures/{code}/areas/{area_code}` | 行為×医療圏 | 強い認可・秘匿反映 |
 | `GET /v1/provenance/{code}` | 出典・改定履歴 | 許可範囲内のみ |
 
-UIは今後これらのAPIに接続します。GitHub Pagesにはサーバー実行機能がないため、API自体は別の認証付き環境（Vercel、Cloudflare Workers、通常のサーバー等）に置く必要があります。
+拡張APIは個別コード等の非公開データを整備した後に、認証付き詳細サイトに追加します。GitHub Pagesにはサーバー実行機能がないため、API自体は別の認証付き環境（Vercel、Cloudflare Workers、通常のサーバー等）に置く必要があります。
 
 ## 公開前の確認
 

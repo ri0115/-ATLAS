@@ -47,7 +47,7 @@ async function loadPublicManifest() {
     byId("meta-areas").textContent = formatNumber(data.secondary_area_count);
     byId("meta-fy").textContent = typeof data.fiscal_year === "number"
       ? String(data.fiscal_year) + "年度" : "—";
-    byId("api-status").textContent = "DATA LAYER: NOT PUBLISHED";
+    byId("api-status").textContent = "DATA LAYER: PROTECTED / SEPARATE SITE";
   } catch (error) {
     console.warn("Could not load public metadata", error);
     byId("api-status").textContent = "PUBLIC METADATA: NOT AVAILABLE";
