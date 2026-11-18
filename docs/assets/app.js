@@ -83,12 +83,12 @@ function extraInit(){$("cover-enter-form").addEventListener("submit",e=>{e.preve
 document.addEventListener("DOMContentLoaded",extraInit);
 document.addEventListener("DOMContentLoaded",resumeSession);
 
-let compareData=null,compareCatalogRequest=null,comparePrefs=[],compareCatalogVersion=0,compareLoading=false,compareClassOptions=[],compareCodeOptions=[];
+let compareData=null,compareCatalogRequest=null,comparePrefs=[],compareCatalogVersion=0,compareLoading=false,compareClassOptions=[],compareCodeOptions=[],compareAreaMode="map",compareBoundarySvg=null,compareBoundaryPromise=null;
 const compareColors=["#dcefee","#a7d9d4","#62b9b4","#278e91","#115968"],compareMissing="#e1e7eb";
 const compareFmt=(v,b)=>v==null?"—":b==="amount"?short(v):b==="count"?num(v)+" 回":b==="perCapita"?yen(v):b==="lq"?idx(v)+" 倍":idx(v);
 const compareLabel={amount:"参考換算額",count:"公開算定回数",perCapita:"人口1人当たり",nationalIndex:"全国平均比",lq:"地域特化指数"};
-function compareClearMap(){for(const x of $("compare-map").querySelectorAll("[data-code]")){x.style.fill=compareMissing;x.removeAttribute("aria-label")} $("compare-tiles").replaceChildren();$("compare-legend").replaceChildren();$("compare-map-focus").textContent="選択した条件の地域データを表示します。";for(const id of ["compare-national","compare-count","compare-codes","compare-regions"])$(id).textContent="—"}
-function compareReset(){compareCatalogVersion++;compareCatalogRequest?.abort();rankRequest?.abort();compareData=null;comparePrefs=[];compareLoading=false;compareClassOptions=[];compareCodeOptions=[];for(const id of ["rank-class-search","rank-code-search"]){$(id).value="";$(id).disabled=true}$("metric").value="ALL";$("rank-class").replaceChildren(new Option("区分全体","ALL"));$("rank-code").replaceChildren(new Option("中分類全体","ALL"));$("rank-class").disabled=$("rank-code").disabled=true;$("rank-list").replaceChildren();$("compare-selection").textContent="全診療報酬";$("rank-status").textContent="認証接続後に表示";$("compare-map").hidden=false;$("compare-tiles").hidden=true;$("compare-map-back").hidden=true;compareClearMap()}
+function compareClearMap(){for(const x of $("compare-map").querySelectorAll("[data-code]")){x.style.fill=compareMissing;x.removeAttribute("aria-label")} $("compare-tiles").replaceChildren();for(const x of $("compare-map-areas").querySelectorAll("path[data-code]")){x.style.fill=compareMissing;x.removeAttribute("aria-label")}$("compare-legend").replaceChildren();$("compare-map-focus").textContent="選択した条件の地域データを表示します。";for(const id of ["compare-national","compare-count","compare-codes","compare-regions"])$(id).textContent="—"}
+function compareReset(){compareCatalogVersion++;compareCatalogRequest?.abort();rankRequest?.abort();compareData=null;comparePrefs=[];compareLoading=false;compareClassOptions=[];compareCodeOptions=[];for(const id of ["rank-class-search","rank-code-search"]){$(id).value="";$(id).disabled=true}$("metric").value="ALL";$("rank-class").replaceChildren(new Option("区分全体","ALL"));$("rank-code").replaceChildren(new Option("中分類全体","ALL"));$("rank-class").disabled=$("rank-code").disabled=true;$("rank-list").replaceChildren();$("compare-selection").textContent="全診療報酬";$("rank-status").textContent="認証接続後に表示";$("compare-map").hidden=false;$("compare-tiles").hidden=true;$("compare-map-areas").hidden=true;$("compare-area-mode").hidden=true;$("compare-map-back").hidden=true;compareAreaMode="map";for(const b of document.querySelectorAll("[data-area-map-mode]")){const on=b.dataset.areaMapMode==="map";b.classList.toggle("is-active",on);b.setAttribute("aria-pressed",String(on))}compareClearMap()}
 async function compareCatalog(category,cl){if(!connected)return;compareCatalogRequest?.abort();rankRequest?.abort();const c=compareCatalogRequest=new AbortController(),v=++compareCatalogVersion,g=connectionGeneration;compareLoading=true;compareData=null;compareClearMap();$("rank-list").replaceChildren();$("rank-class").disabled=$("rank-code").disabled=true;$("rank-class-search").disabled=$("rank-code-search").disabled=true;$("rank-code-search").value="";$("rank-status").textContent="分類一覧取得中…";try{const d=await api("/v1/compare/catalog?"+new URLSearchParams({category,class:cl}),c.signal);if(c.signal.aborted||v!==compareCatalogVersion||g!==connectionGeneration)return;const cs=$("rank-class"),ps=$("rank-code");cs.replaceChildren();if(category!=="TECH")cs.add(new Option("区分全体","ALL"));for(const x of d.classes)cs.add(new Option(x.code==="UNCLASSIFIED"?x.name+"（"+x.count+"件）":category==="TECH"?x.name:x.code+" "+x.name+"（"+x.count+"件）",x.code));if([...cs.options].some(x=>x.value===cl))cs.value=cl;else if(category==="TECH")cs.value="CT";else cs.value="ALL";cs.disabled=category==="ALL";ps.replaceChildren(new Option("中分類全体","ALL"));for(const x of d.codes)ps.add(new Option(x.code+" "+x.name,x.code));ps.disabled=category==="ALL"||category==="TECH";compareClassOptions=[...cs.options].map(x=>({value:x.value,text:x.textContent}));compareCodeOptions=[...ps.options].map(x=>({value:x.value,text:x.textContent}));$("rank-class-search").disabled=cs.disabled;$("rank-code-search").disabled=ps.disabled;compareFilter("rank-class","rank-class-search",compareClassOptions);compareLoading=false;await loadRank()}catch(e){if(!c.signal.aborted&&g===connectionGeneration){compareLoading=false;$("rank-status").textContent=e.message}}}
 function compareFilter(selectId,inputId,options){const s=$(selectId),selected=s.value,query=$(inputId).value.normalize("NFKC").toLowerCase().trim();s.replaceChildren();for(const x of options){if(!query||x.value==="ALL"||x.value===selected||x.text.normalize("NFKC").toLowerCase().includes(query))s.add(new Option(x.text,x.value))}if([...s.options].some(x=>x.value===selected))s.value=selected;else s.selectedIndex=0} 
 function compareColor(v,thresholds){if(v==null||!Number.isFinite(v))return compareMissing;let i=thresholds.findIndex(x=>v<=x);if(i<0)i=4;return compareColors[i]}
@@ -97,8 +97,82 @@ function compareDrill(x){if(!connected)return;if(x.code.length===2){$("rank-leve
 function compareRankTable(){const r=compareData;if(!r)return;const ranked=r.rows.filter(x=>x.rank!==null).sort((a,b)=>a.rank-b.rank),n=$("compare-limit").value==="all"?ranked.length:Number($("compare-limit").value)||10,max=Math.max(1,...ranked.map(x=>x.value));$("rank-list").replaceChildren();for(const x of ranked.slice(0,n)){const tr=el("tr"),name=el("td"),b=el("button",x.name,"atlas-compare-region");b.type="button";b.addEventListener("click",()=>compareDrill(x));name.append(b);const td=el("td"),track=el("div","","atlas-compare-bar"),fill=el("span");fill.style.width=(100*x.value/max)+"%";fill.style.backgroundColor="#278e91";track.append(fill);td.append(track);const audit=[];if(x.suppressed)audit.push("秘匿 "+num(x.suppressed));if(x.noPoints)audit.push("点数なし "+num(x.noPoints));if(x.missing)audit.push("欠測 "+num(x.missing));tr.append(el("td",x.rank),name,td,el("td",compareFmt(x.value,r.basis),"right"),el("td",audit.join(" / ")||"公開値","atlas-compare-audit"));tr.addEventListener("mouseenter",()=>compareDetail(x,r));$("rank-list").append(tr)}if(!ranked.length){const tr=el("tr"),td=el("td","指標を算出できる地域はありません。");td.colSpan=5;tr.append(td);$("rank-list").append(tr)}}
 function compareRender(r){$("compare-selection").textContent=r.label+" · "+(r.grain==="pref"?"都道府県別原票":"二次医療圏別原票")+" · "+(r.scope==="include"?"公費含む":"公費含まない");$("rank-status").textContent=num(r.eligible)+" / "+num(r.total)+" 地域 · "+compareLabel[r.basis];$("compare-national").textContent=short(r.nationalAmount);$("compare-count").textContent=num(r.nationalCount)+" 回";$("compare-codes").textContent=num(r.codeCount)+" 件";$("compare-regions").textContent=num(r.eligible)+" / "+num(r.total);
 const vals=r.rows.map(x=>x.value).filter(x=>x!==null&&Number.isFinite(x)).sort((a,b)=>a-b),thresholds=Array.from({length:5},(_,i)=>vals.length?vals[Math.max(0,Math.ceil(vals.length*(i+1)/5)-1)]:0);$("compare-legend").replaceChildren();for(let i=0;i<5;i++){const span=el("span"),dot=el("i");dot.style.backgroundColor=compareColors[i];span.append(dot,el("span",i===0?"〜"+compareFmt(thresholds[i],r.basis):compareFmt(thresholds[i-1],r.basis)+"〜"+compareFmt(thresholds[i],r.basis)));$("compare-legend").append(span)}const na=el("span"),dot=el("i");dot.style.backgroundColor=compareMissing;na.append(dot,el("span","算出不可"));$("compare-legend").append(na);
-const isPref=r.level==="prefecture";$("compare-map").hidden=!isPref;$("compare-tiles").hidden=isPref;$("compare-map-back").hidden=isPref;$("compare-map-note").textContent=isPref?"都道府県別の概略地図。クリックするとその県の医療圏比較へ。":"医療圏別色分けタイル（区域境界ではありません）。クリックで地域プロファイルへ。";const byCode=new Map(r.rows.map(x=>[x.code,x]));
+const isPref=r.level==="prefecture";$("compare-map").hidden=!isPref;$("compare-area-mode").hidden=isPref;$("compare-map-back").hidden=isPref;compareApplyAreaMode(r);const byCode=new Map(r.rows.map(x=>[x.code,x]));
 for(const node of $("compare-map").querySelectorAll("[data-code]")){const k=node.dataset.code.padStart(2,"0"),x=byCode.get(k);node.style.fill=x?compareColor(x.value,thresholds):compareMissing;if(x)node.setAttribute("aria-label",x.name+" "+compareFmt(x.value,r.basis))}
-$("compare-tiles").replaceChildren();if(!isPref){const groups=new Map();for(const x of r.rows){const pref=x.code.slice(0,2);if(!groups.has(pref))groups.set(pref,[]);groups.get(pref).push(x)}for(const [pref,rows] of groups){const section=el("section","","atlas-area-pref"),grid=el("div","","atlas-area-grid");section.append(el("h4",comparePrefs.find(x=>x.code===pref)?.name||pref));for(const x of rows){const b=el("button",x.name,"atlas-area-tile");b.type="button";const color=compareColor(x.value,thresholds);b.style.backgroundColor=color;b.style.color=[compareColors[3],compareColors[4]].includes(color)?"#fff":"#224757";b.append(el("small",compareFmt(x.value,r.basis)));b.addEventListener("mouseenter",()=>compareDetail(x,r));b.addEventListener("focus",()=>compareDetail(x,r));b.addEventListener("click",()=>compareDrill(x));grid.append(b)}section.append(grid);$("compare-tiles").append(section)}}compareRankTable()}
-function compareInit(){for(const node of $("compare-map").querySelectorAll("[data-code]")){node.setAttribute("role","button");node.setAttribute("tabindex","0");const get=()=>compareData?.rows.find(x=>x.code===node.dataset.code.padStart(2,"0"));node.addEventListener("mouseenter",()=>{const x=get();if(x)compareDetail(x,compareData)});node.addEventListener("focus",()=>{const x=get();if(x)compareDetail(x,compareData)});const click=()=>{const x=get();if(x)compareDrill(x)};node.addEventListener("click",click);node.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();click()}})}$("metric").addEventListener("change",()=>{$("rank-class-search").value="";compareCatalog($("metric").value,"ALL")});$("rank-class-search").addEventListener("input",()=>compareFilter("rank-class","rank-class-search",compareClassOptions));$("rank-code-search").addEventListener("input",()=>compareFilter("rank-code","rank-code-search",compareCodeOptions));$("rank-class").addEventListener("change",()=>compareCatalog($("metric").value,$("rank-class").value));$("rank-code").addEventListener("change",loadRank);$("compare-limit").addEventListener("change",compareRankTable);$("compare-map-back").addEventListener("click",()=>{$("rank-level").value="prefecture";$("rank-pref").value="JP";$("rank-pref").disabled=true;loadRank()});}
+$("compare-tiles").replaceChildren();if(!isPref){const groups=new Map();for(const x of r.rows){const pref=x.code.slice(0,2);if(!groups.has(pref))groups.set(pref,[]);groups.get(pref).push(x)}for(const [pref,rows] of groups){const section=el("section","","atlas-area-pref"),grid=el("div","","atlas-area-grid");section.append(el("h4",comparePrefs.find(x=>x.code===pref)?.name||pref));for(const x of rows){const b=el("button",x.name,"atlas-area-tile");b.type="button";const color=compareColor(x.value,thresholds);b.style.backgroundColor=color;b.style.color=[compareColors[3],compareColors[4]].includes(color)?"#fff":"#224757";b.append(el("small",compareFmt(x.value,r.basis)));b.addEventListener("mouseenter",()=>compareDetail(x,r));b.addEventListener("focus",()=>compareDetail(x,r));b.addEventListener("click",()=>compareDrill(x));grid.append(b)}section.append(grid);$("compare-tiles").append(section)}}if(!isPref)comparePaintMedicalAreas(r,thresholds);compareRankTable()}
+function compareInit(){for(const node of $("compare-map").querySelectorAll("[data-code]")){node.setAttribute("role","button");node.setAttribute("tabindex","0");const get=()=>compareData?.rows.find(x=>x.code===node.dataset.code.padStart(2,"0"));node.addEventListener("mouseenter",()=>{const x=get();if(x)compareDetail(x,compareData)});node.addEventListener("focus",()=>{const x=get();if(x)compareDetail(x,compareData)});const click=()=>{const x=get();if(x)compareDrill(x)};node.addEventListener("click",click);node.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();click()}})}$("metric").addEventListener("change",()=>{$("rank-class-search").value="";compareCatalog($("metric").value,"ALL")});$("rank-class-search").addEventListener("input",()=>compareFilter("rank-class","rank-class-search",compareClassOptions));$("rank-code-search").addEventListener("input",()=>compareFilter("rank-code","rank-code-search",compareCodeOptions));$("rank-class").addEventListener("change",()=>compareCatalog($("metric").value,$("rank-class").value));$("rank-code").addEventListener("change",loadRank);$("compare-limit").addEventListener("change",compareRankTable);for(const b of document.querySelectorAll("[data-area-map-mode]"))b.addEventListener("click",()=>{compareAreaMode=b.dataset.areaMapMode;for(const x of document.querySelectorAll("[data-area-map-mode]")){x.classList.toggle("is-active",x===b);x.setAttribute("aria-pressed",String(x===b))}if(compareData?.level==="area"){compareApplyAreaMode(compareData);if(compareAreaMode==="map"){const vals=compareData.rows.map(x=>x.value).filter(x=>x!==null&&Number.isFinite(x)).sort((a,b)=>a-b),thresholds=Array.from({length:5},(_,i)=>vals.length?vals[Math.max(0,Math.ceil(vals.length*(i+1)/5)-1)]:0);comparePaintMedicalAreas(compareData,thresholds)}}});$("compare-map-back").addEventListener("click",()=>{$("rank-level").value="prefecture";$("rank-pref").value="JP";$("rank-pref").disabled=true;loadRank()});}
 document.addEventListener("DOMContentLoaded",compareInit);
+
+const ATLAS_BOUNDARY_URL="./assets/medical-areas-330.svg";
+function compareApplyAreaMode(r){
+ const pref=r.level==="prefecture",map=!pref&&compareAreaMode==="map";
+ $("compare-map").hidden=!pref;$("compare-map-areas").hidden=!map;$("compare-tiles").hidden=pref||map;
+ $("compare-area-mode").hidden=pref;
+ $("compare-map-note").textContent=pref?"都道府県別の概略地図。選択した県の医療圏へ移動。":map?"二次医療圏境界図（2020年度原図）。地域選択で詳細を表示。":"二次医療圏別タイル。地域選択で詳細を表示。";
+ $("compare-map-source").textContent=pref?"都道府県の概略図：lalamalink / CC0。":map?"境界出典：国土交通省・国土数値情報 A38-20（2020年度）。2024年度330医療圏にコード照合、秋田県旧8圏域を3圏域に合算。島しょ部等は一部簡略化。2024年の境界精度は未検証。":"二次医療圏の一覧タイル。地理的な位置・面積は表していません。";
+}
+function compareBindMedicalPath(node){
+ const code=node.dataset.code;
+ node.setAttribute("role","button");node.setAttribute("tabindex","0");
+ const get=()=>compareData?.level==="area"?compareData.rows.find(x=>x.code===code):null;
+ const preview=()=>{const x=get();if(x)compareDetail(x,compareData)};
+ const click=()=>{const x=get();if(x)compareDrill(x)};
+ node.addEventListener("mouseenter",preview);node.addEventListener("focus",preview);
+ node.addEventListener("click",click);
+ node.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();click()}});
+}
+async function compareLoadMedicalMap(){
+ if(compareBoundarySvg)return compareBoundarySvg;
+ if(!compareBoundaryPromise)compareBoundaryPromise=(async()=>{
+  const res=await fetch(ATLAS_BOUNDARY_URL,{method:"GET",cache:"force-cache",credentials:"same-origin",redirect:"error"});
+  if(!res.ok)throw Error("境界データの取得に失敗しました。");
+  const src=await res.text(),xml=new DOMParser().parseFromString(src,"image/svg+xml");
+  if(xml.documentElement.localName!=="svg"||xml.querySelector("parsererror"))throw Error("境界図の形式が正しくありません。");
+  const paths=[...xml.querySelectorAll("path[data-code]")];
+  if(paths.length!==330||new Set(paths.map(x=>x.dataset.code)).size!==330)throw Error("境界図の地域数が一致しません。");
+  const svg=document.importNode(xml.documentElement,true);
+  $("compare-map-areas").replaceChildren(svg);
+  compareBoundarySvg=svg;
+  for(const path of svg.querySelectorAll("path[data-code]"))compareBindMedicalPath(path);
+  return svg
+ })().catch(e=>{compareBoundaryPromise=null;throw e});
+ return compareBoundaryPromise
+}
+function compareZoomMedicalMap(svg,pref){
+ const rootView=svg.getAttribute("data-original-viewbox")||svg.getAttribute("viewBox");
+ if(!svg.hasAttribute("data-original-viewbox"))svg.setAttribute("data-original-viewbox",rootView);
+ if(!pref||pref==="JP"){svg.setAttribute("viewBox",rootView);return}
+ let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+ for(const n of svg.querySelectorAll('path[data-pref="'+pref+'"]')){
+  const b=n.getBBox();
+  if(b.width===0&&b.height===0)continue;
+  x0=Math.min(x0,b.x);y0=Math.min(y0,b.y);x1=Math.max(x1,b.x+b.width);y1=Math.max(y1,b.y+b.height)
+ }
+ if(!Number.isFinite(x0)||x1<=x0||y1<=y0){svg.setAttribute("viewBox",rootView);return}
+ const pad=Math.max(12,(x1-x0)*.08,(y1-y0)*.08);
+ svg.setAttribute("viewBox",[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2].map(x=>Number(x.toFixed(2))).join(" "))
+}
+async function comparePaintMedicalAreas(r,thresholds){
+ if(!connected||compareAreaMode!=="map")return;
+ const gen=connectionGeneration;
+ try{
+  const svg=await compareLoadMedicalMap();
+  if(!connected||gen!==connectionGeneration||compareData!==r||compareAreaMode!=="map"||r.level!=="area")return;
+  const data=new Map(r.rows.map(x=>[x.code,x]));
+  for(const node of svg.querySelectorAll("path[data-code]")){
+   const x=data.get(node.dataset.code);
+   node.style.fill=x?compareColor(x.value,thresholds):compareMissing;
+   node.setAttribute("tabindex",x?"0":"-1");
+   if(x)node.setAttribute("aria-label",x.name+" "+compareLabel[r.basis]+" "+compareFmt(x.value,r.basis));
+   else node.removeAttribute("aria-label")
+  }
+  compareZoomMedicalMap(svg,$("rank-pref").value)
+ }catch(e){
+  if(connected&&compareData===r&&compareAreaMode==="map"){
+   compareAreaMode="tiles";
+   for(const b of document.querySelectorAll("[data-area-map-mode]")){const active=b.dataset.areaMapMode==="tiles";b.classList.toggle("is-active",active);b.setAttribute("aria-pressed",String(active))}
+   compareApplyAreaMode(r);
+   $("compare-map-note").textContent="境界地図の取得に失敗したため、タイル一覧を表示しています。"
+  }
+ }
+}
