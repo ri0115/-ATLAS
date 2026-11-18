@@ -5,6 +5,6 @@
   "secondary_area_count": 330,
   "data_policy": "public-summary-only",
   "includes_protected_data": false,
-  "details_api_enabled": false,
+  "details_api_enabled": true,
   "source_description": "NDB 11th open data / fiscal 2024; summary metadata only"
 }
