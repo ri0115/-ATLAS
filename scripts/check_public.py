@@ -78,9 +78,9 @@ if manifest.get("procedure_code_count") != 9275 or manifest.get("secondary_area_
     problems.append("Published overview counts differ from approved initial release")
 
 html = (SITE / "index.html").read_text(encoding="utf-8")
-if '<script src="./assets/app.js" defer></script>' not in html:
+if not re.search(r'<script src="\./assets/app\.js(?:\?v=[0-9.]+)?" defer></script>', html):
     problems.append("Missing external JS reference")
-if '<link rel="stylesheet" href="./assets/style.css">' not in html:
+if not re.search(r'<link rel="stylesheet" href="\./assets/style\.css(?:\?v=[0-9.]+)?">', html):
     problems.append("Missing external CSS reference")
 if not (SITE / "assets/app.js").is_file():
     problems.append("Missing JS asset")
