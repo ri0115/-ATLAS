@@ -9,7 +9,7 @@ function analyze(payload){
  const areaMap=new Map(areas.map(a=>[a.code,a]));
  const selected=areaMap.get(regionCode);
  if(!selected||!finite(selected.population)||selected.population<=0)throw Error("Selected region has no valid population");
- const output=[];
+ const output=[]; // Provisional client-side evaluator; production aggregates must be computed behind auth.
  for(const item of items){
   const values=item.areas||{};
   const eligible=areas.filter(a=>finite(a.population)&&a.population>0&&finite(values[a.code])&&values[a.code]>=0);
