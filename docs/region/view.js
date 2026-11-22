@@ -24,6 +24,18 @@ $("region-pref").addEventListener("change",()=>{
  const notice=document.getElementById("region-selection-notice");
  if(notice)notice.textContent=pref?PREFS[Number(pref)-1]+"を選択しました。二次医療圏の取得には認証APIとの接続が必要です。":"都道府県を選択してください。";
 });
+const TRANSFER="atlas.region.selection.v1";
+const btn=$("region-connect"),spinner=$("region-spinner"),status=$("region-status");
+function busy(on,message){btn.disabled=on;spinner.hidden=!on;status.textContent=message}
+btn.addEventListener("click",()=>{
+ const pref=$("region-pref").value,area=$("region-area").value;
+ if(!pref){status.textContent="先に都道府県を選択してください。";$("region-pref").focus();return}
+ sessionStorage.setItem(TRANSFER,JSON.stringify({pref,area,at:Date.now()}));
+ busy(true,"認証付きデータに接続しています…");
+ location.assign("../#profile");
+});
+const pending=sessionStorage.getItem(TRANSFER);
+if(pending){try{const x=JSON.parse(pending);if(Date.now()-x.at<1800000&&x.pref){$("region-pref").value=x.pref;status.textContent="選択した地域："+PREFS[Number(x.pref)-1]+"。データ接続待ち";}}catch{}}
 document.querySelectorAll("[data-basis]").forEach(b=>b.addEventListener("click",()=>{state.basis=b.dataset.basis;state.page=0;document.querySelectorAll("[data-basis]").forEach(x=>x.classList.toggle("active",x===b));drawAll()}));
 $("region-search").addEventListener("input",e=>{state.search=e.target.value;state.page=0;drawAll()});
 $("region-prev").addEventListener("click",()=>{state.page--;drawAll()});
