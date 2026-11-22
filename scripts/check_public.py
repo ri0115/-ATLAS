@@ -23,7 +23,7 @@ DISALLOWED_SUFFIXES = {
 # Source code, manifest, and supported web assets only.
 WEB_SUFFIXES = {".html", ".css", ".js", ".json", ".svg", ".png", ".jpg", ".webp", ".ico"}
 EXPECTED_SITE_FILES = {
-    "index.html", ".nojekyll",
+    "index.html", "region/index.html", ".nojekyll",
     "assets/style.css", "assets/app.js", "assets/public-manifest.json",
     "assets/medical-areas-330.svg"
 }
