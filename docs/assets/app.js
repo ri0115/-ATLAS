@@ -68,7 +68,7 @@ function specialReset(){specialVersion++;specialRequest?.abort();specialRequest=
 async function applyRegionalDeepLink(){
  const raw=sessionStorage.getItem("atlas.region.selection.v1");if(!raw||!connected)return;
  let x;try{x=JSON.parse(raw)}catch{sessionStorage.removeItem("atlas.region.selection.v1");return}
- if(!/^\\d{2}$/.test(x.pref)||Date.now()-x.at>1800000){sessionStorage.removeItem("atlas.region.selection.v1");return}
+ if(!/^[0-9]{2}$/.test(x.pref)||Date.now()-x.at>1800000){sessionStorage.removeItem("atlas.region.selection.v1");return}
  sessionStorage.removeItem("atlas.region.selection.v1");
  setView("profile");setSub("special");
  $("special-pref").value=x.pref;
