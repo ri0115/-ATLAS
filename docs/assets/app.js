@@ -69,11 +69,20 @@ async function applyRegionalDeepLink(){
  const raw=sessionStorage.getItem("atlas.region.selection.v1");if(!raw||!connected)return;
  let x;try{x=JSON.parse(raw)}catch{sessionStorage.removeItem("atlas.region.selection.v1");return}
  if(!/^[0-9]{2}$/.test(x.pref)||Date.now()-x.at>1800000){sessionStorage.removeItem("atlas.region.selection.v1");return}
- sessionStorage.removeItem("atlas.region.selection.v1");
  setView("profile");setSub("special");
  $("special-pref").value=x.pref;
- $("special-status").textContent="指定した地域の診療報酬を読み込み中…";
- try{await fillArea("special-pref","special-area");if(x.area&&[...$("special-area").options].some(o=>o.value===x.area))$("special-area").value=x.area;await specialLoad()}catch(e){$("special-status").textContent="地域データ取得エラー："+e.message}
+ $("special-status").textContent="指定地域のデータを読み込み中…";
+ try{
+  await fillArea("special-pref","special-area");
+  if(x.area&&[...$("special-area").options].some(o=>o.value===x.area))$("special-area").value=x.area;
+  const region=$("special-area").value||x.pref,grain=region.length===2?"pref":"secondary";
+  const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:"include",grain,basis:"nationalIndex",category:"ALL",min:"0"}));
+  if(!Array.isArray(d.rows))throw Error("ランキング形式が未対応です");
+  const exportData={regionName:d.regionName,region,grain,rows:d.rows.slice(0,100),eligible:d.eligible,at:Date.now()};
+  sessionStorage.setItem("atlas.region.result.v1",JSON.stringify(exportData));
+  sessionStorage.removeItem("atlas.region.selection.v1");
+  location.replace("./region/");
+ }catch(e){$("special-status").textContent="地域データ取得エラー："+e.message}
 }
 function specialEnable(prefs){$("special-pref").replaceChildren(new Option("都道府県を選択",""));for(const p of prefs)$("special-pref").add(new Option(p.name,p.code));for(const id of specialControls)$(id).disabled=id==="special-area";for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=false;$("special-context").textContent="都道府県を選択してください。";$("special-status").textContent="地域選択待ち"}
 function specialValue(v,b){return b==="lq"?idx(v)+" 倍":b==="nationalIndex"?idx(v):specialMoney(v)}
