@@ -76,7 +76,7 @@ async function applyRegionalDeepLink(){
   await fillArea("special-pref","special-area");
   if(x.area&&[...$("special-area").options].some(o=>o.value===x.area))$("special-area").value=x.area;
   const region=$("special-area").value||x.pref,grain=region.length===2?"pref":"secondary";
-  const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:"include",grain,basis:"nationalIndex",category:"ALL",min:"0"}));
+  const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:"include",grain,basis:"nationalIndex",category:"ALL",min:"1000000"}));
   if(!Array.isArray(d.rows))throw Error("ランキング形式が未対応です");
   const exportData={regionName:d.regionName,region,grain,rows:d.rows.slice(0,100),eligible:d.eligible,at:Date.now()};
   sessionStorage.setItem("atlas.region.result.v1",JSON.stringify(exportData));
