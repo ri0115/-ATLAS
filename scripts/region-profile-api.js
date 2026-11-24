@@ -35,19 +35,19 @@ function profile({areas,procedures,region,scope="include",basis="raw",side="high
    const values=(b==="raw"?eligible:popEligible).map(a=>b==="raw"?p.counts[a.code]:p.counts[a.code]/a.population*10000);
    const greater=values.filter(v=>v>ownValue).length;
    const lesser=values.filter(v=>v<ownValue).length;
-   metrics[b]={index:ownValue/mean*100,difference:ownValue-mean,rank:greater+1,worstRank:lesser+1,comparable:values.length,eligible:values.length,value:ownValue,average:mean};
+   metrics[b]={index:ownValue/mean*100,difference:ownValue-mean,rank:greater+1,worstRank:lesser+1,comparable:values.length,eligible:values.length,coverage:values.length/areas.length,value:ownValue,average:mean};
   }
   rows.push({code:p.code,name:p.name,category:p.category||"",count:own,metrics,coverage:eligible.length/areas.length,scope});
  }
  const query=String(q).normalize("NFKC").toLowerCase().trim();
  const matches=rows.filter(r=>r.metrics[basis]&&(!query||(r.code+" "+r.name+" "+r.category).normalize("NFKC").toLowerCase().includes(query))&&(side==="all"||(side==="high"?r.metrics[basis].index>100:r.metrics[basis].index<100)));
  matches.sort((a,b)=>side==="low"?a.metrics[basis].index-b.metrics[basis].index:side==="high"?b.metrics[basis].index-a.metrics[basis].index:Math.abs(b.metrics[basis].index-100)-Math.abs(a.metrics[basis].index-100));
- const compact=r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[basis],coverage:r.coverage});
+ const compact=r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[basis]});
  if(mode==="highlights"){
   const tops={};for(const b of ["raw","population"])for(const dir of ["high","low"]){
    const selected=rows.filter(r=>r.metrics[b]&&(dir==="high"?r.metrics[b].index>100:r.metrics[b].index<100));
    selected.sort((a,c)=>dir==="high"?c.metrics[b].index-a.metrics[b].index:a.metrics[b].index-c.metrics[b].index);
-   tops[b+dir[0].toUpperCase()+dir.slice(1)]=selected.slice(0,30).map(r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[b],coverage:r.coverage}));
+   tops[b+dir[0].toUpperCase()+dir.slice(1)]=selected.slice(0,30).map(r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[b]}));
   }
   const distributions={},categories=new Map();
   for(const b of ["raw","population"]){
