@@ -49,7 +49,17 @@ function profile({areas,procedures,region,scope="include",basis="raw",side="high
    selected.sort((a,c)=>dir==="high"?c.metrics[b].index-a.metrics[b].index:a.metrics[b].index-c.metrics[b].index);
    tops[b+dir[0].toUpperCase()+dir.slice(1)]=selected.slice(0,30).map(r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[b],coverage:r.coverage}));
   }
-  return {region,regionName:ownArea.name,scope,regionPopulation:ownArea.population,areaCount:areas.length,top:tops,notice:"Observed published cells only; national mean is based on comparable areas, not all 330 when suppression occurs."};
+  const distributions={},categories=new Map();
+  for(const b of ["raw","population"]){
+   const bins=Array(10).fill(0);
+   for(const r of rows){const m=r.metrics[b];if(!m)continue;const percentile=(m.rank-1)/Math.max(1,m.eligible-1);bins[Math.min(9,Math.floor(percentile*10))]++}
+   distributions[b]=bins;
+  }
+  for(const r of rows){const k=r.category||"未分類";let c=categories.get(k);if(!c){c={category:k,codes:0,aboveRaw:0,abovePopulation:0,populationComparable:0};categories.set(k,c)}c.codes++;if(r.metrics.raw.index>100)c.aboveRaw++;if(r.metrics.population){c.populationComparable++;if(r.metrics.population.index>100)c.abovePopulation++}}
+  const scatter=rows.filter(r=>r.metrics.population).sort((a,b)=>a.code.localeCompare(b.code));
+  const stride=Math.max(1,Math.ceil(scatter.length/500));
+  const points=scatter.filter((_,i)=>i%stride===0).map(r=>({code:r.code,name:r.name,raw:r.metrics.raw.index,population:r.metrics.population.index}));
+  return {region,regionName:ownArea.name,scope,regionPopulation:ownArea.population,areaCount:areas.length,top:tops,visuals:{distributions,categories:[...categories.values()],scatter:points,scatterTotal:scatter.length,comparableCodes:rows.length},notice:"Observed published cells only; national mean is based on comparable areas, not all 330 when suppression occurs."};
  }
  return {region,regionName:ownArea.name,scope,basis,side,page,pageSize,total:matches.length,rows:matches.slice(page*pageSize,(page+1)*pageSize).map(compact),notice:"Missing and suppressed counts excluded; population index uses pooled comparable-area population."};
 }
