@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const names=["profile","procedure","compare","guidebook","guide"],panes={profile:"appViewProfile",procedure:"appViewProcedure",compare:"appViewCompare",guidebook:"appViewGuidebook",guide:"appViewGuide"};
 function setView(view){if(!names.includes(view))view="profile";for(const b of document.querySelectorAll(".app-top-tab")){const on=b.dataset.view===view;b.classList.toggle("is-active",on);b.setAttribute("aria-selected",String(on))}for(const v of names)$(panes[v]).hidden=v!==view;if(location.hash!=="#"+view)history.replaceState(null,"","#"+view);if(view==="compare")document.dispatchEvent(new Event("atlas-rank"));if(view==="procedure")document.dispatchEvent(new Event("atlas-procedure"));if(view==="guidebook")document.dispatchEvent(new Event("atlas-guidebook"));if(view==="profile")document.dispatchEvent(new Event("atlas-profile"))}
 function setSub(sub){for(const b of document.querySelectorAll("[data-sub]"))b.classList.toggle("active",b.dataset.sub===sub);$("profileBoard").hidden=sub!=="category";$("techBoard").hidden=sub!=="tech";$("specialBoard").hidden=sub!=="special";if(sub==="tech")document.dispatchEvent(new Event("atlas-tech"));if(sub==="special")document.dispatchEvent(new Event("atlas-special"))}
-function initNav(){if(sessionStorage.getItem("atlas.region.selection.v1")){setView("profile");setSub("special")}for(const b of document.querySelectorAll(".app-top-tab"))b.addEventListener("click",()=>setView(b.dataset.view));for(const b of document.querySelectorAll("[data-sub]"))b.addEventListener("click",()=>setSub(b.dataset.sub));window.addEventListener("hashchange",()=>setView(location.hash.slice(1)));setView(location.hash.slice(1));if(sessionStorage.getItem("atlas.region.selection.v1")){setView("profile");setSub("special")}}
+function initNav(){$("region-open-shared")?.addEventListener("click",()=>{setView("profile");setSub("special");if(!connected&&!starting)connect()});if(sessionStorage.getItem("atlas.region.selection.v1")){setView("profile");setSub("special")}for(const b of document.querySelectorAll(".app-top-tab"))b.addEventListener("click",()=>setView(b.dataset.view));for(const b of document.querySelectorAll("[data-sub]"))b.addEventListener("click",()=>setSub(b.dataset.sub));window.addEventListener("hashchange",()=>setView(location.hash.slice(1)));setView(location.hash.slice(1));if(sessionStorage.getItem("atlas.region.selection.v1")){setView("profile");setSub("special")}}
 
 const num=v=>v==null?"—":Math.round(v).toLocaleString("ja-JP"),yen=v=>v==null?"—":num(v)+" 円",pct=v=>v==null?"—":(100*v).toFixed(2)+"%",idx=v=>v==null?"—":Number(v).toFixed(2),short=v=>v==null?"—":(v/100000000).toFixed(2)+" 億円";
 const el=(t,v="",c="")=>{const x=document.createElement(t);x.textContent=v;if(c)x.className=c;return x};
@@ -79,9 +79,9 @@ async function applyRegionalDeepLink(){
   const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:"include",grain,basis:"nationalIndex",category:"ALL",min:"1000000"}));
   if(!Array.isArray(d.rows))throw Error("ランキング形式が未対応です");
   const exportData={regionName:d.regionName,region,grain,rows:d.rows.slice(0,100),eligible:d.eligible,at:Date.now()};
-  sessionStorage.setItem("atlas.region.result.v1",JSON.stringify(exportData));
   sessionStorage.removeItem("atlas.region.selection.v1");
-  location.replace("./region/");
+  $("atlas-region-transition").classList.remove("active");
+  specialRender(d);
  }catch(e){$("special-status").textContent="地域データ取得エラー："+e.message;$("atlas-region-transition").classList.remove("active");status("地域分析の取得に失敗しました："+e.message)}
 }
 function specialEnable(prefs){$("special-pref").replaceChildren(new Option("都道府県を選択",""));for(const p of prefs)$("special-pref").add(new Option(p.name,p.code));for(const id of specialControls)$(id).disabled=id==="special-area";for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=false;$("special-context").textContent="都道府県を選択してください。";$("special-status").textContent="地域選択待ち"}
