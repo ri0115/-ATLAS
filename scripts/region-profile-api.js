@@ -52,4 +52,22 @@ function profile({areas,procedures,region,scope="include",basis="raw",side="high
  }
  return {region,regionName:ownArea.name,scope,basis,side,page,pageSize,total:matches.length,rows:matches.slice(page*pageSize,(page+1)*pageSize).map(compact),notice:"Missing and suppressed counts excluded; population index uses pooled comparable-area population."};
 }
-module.exports={profile};
+// Adapt the existing private NDB schema without exposing source cells.
+function normalizeNdb(db,areas,grain,scope){
+ if(!["pref","secondary"].includes(grain)||!["include","exclude"].includes(scope))throw Error("invalid source filters");
+ const source=db.areas[grain],key=grain==="pref"?16:17;
+ const indices=areas.map(a=>{const matches=[];source.forEach((x,i)=>{if(String(x[0])===a.code)matches.push(i)});if(matches.length!==1)throw Error("unmapped or ambiguous geography: "+a.code);return matches[0]});
+ const procedures=new Map();
+ for(const r of db.rows){
+  if(r[10]!=="count"||r[11]!==scope)continue;
+  if(!Array.isArray(r[key])||r[key].length!==source.length)throw Error("invalid source row");
+  let p=procedures.get(r[0]);if(!p){p={code:r[0],name:r[1],category:r[2],counts:Object.create(null)};procedures.set(r[0],p)}
+  for(let j=0;j<areas.length;j++){
+   const code=areas[j].code,v=r[key][indices[j]],prev=p.counts[code];
+   // A partially suppressed total must not be treated as a complete count.
+   p.counts[code]=prev===null||typeof v!=="number"||!Number.isFinite(v)||v<0?null:(prev??0)+v;
+  }
+ }
+ return [...procedures.values()];
+}
+module.exports={profile,normalizeNdb};
