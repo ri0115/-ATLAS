@@ -1,6 +1,7 @@
 "use strict";
 const {normalizeNdb}=require("./region-profile-api");
-function createRegionSource({db,regional,population,crosswalk}){
+const AKITA=Object.freeze({"0501":"0501","0502":"0501","0503":"0501","0504":"0502","0505":"0502","0506":"0503","0507":"0503","0508":"0503"});
+function createRegionSource({db,regional,population,crosswalk=AKITA}){
  const canonical=Object.keys(regional).sort().map(code=>({code,name:regional[code].name,population:population.areas[code]?.population}));
  if(canonical.length!==330||canonical.some(a=>!Number.isSafeInteger(a.population)||a.population<=0)||canonical.reduce((s,a)=>s+a.population,0)!==124885175)throw Error("canonical geography mismatch");
  const prefs=db.areas.pref.map(([code,name])=>({code:String(code),name,population:canonical.filter(a=>a.code.startsWith(String(code))).reduce((s,a)=>s+a.population,0)}));
@@ -19,4 +20,4 @@ function createRegionSource({db,regional,population,crosswalk}){
   const result={areas,procedures:normalizeNdb(source,areas,grain,scope)};cache.set(key,result);return result;
  };
 }
-module.exports={createRegionSource};
+module.exports={createRegionSource,AKITA};
