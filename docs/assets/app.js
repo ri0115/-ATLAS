@@ -66,23 +66,17 @@ const specialMoney=v=>v==null?"—":Math.abs(v)>=1e8?(v/1e8).toLocaleString("ja-
 function specialEmpty(msg){$("special-rows").replaceChildren();const r=el("tr"),td=el("td",msg,"atlas-special-empty");td.colSpan=8;r.append(td);$("special-rows").append(r);for(const id of ["special-total","special-eligible","special-top","special-value"])$(id).textContent="—"}
 function specialReset(){specialVersion++;specialRequest?.abort();specialRequest=null;for(const id of specialControls)$(id).disabled=true;for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=true;$("special-pref").replaceChildren(new Option("都道府県を選択",""));$("special-area").replaceChildren(new Option("都道府県全体",""));$("special-context").textContent="「データ接続」後に地域を選択してください。";$("special-status").textContent="データ未接続";specialEmpty("認証接続後にランキングを表示します。")}
 async function applyRegionalDeepLink(){
- const raw=sessionStorage.getItem("atlas.region.selection.v1");if(!raw||!connected)return;
- let x;try{x=JSON.parse(raw)}catch{sessionStorage.removeItem("atlas.region.selection.v1");return}
- if(!/^[0-9]{2}$/.test(x.pref)||Date.now()-x.at>1800000){sessionStorage.removeItem("atlas.region.selection.v1");return}
- setView("profile");setSub("special");
- $("special-pref").value=x.pref;
- $("special-status").textContent="指定地域のデータを読み込み中…";
+ const key="atlas.region.selection.v1",raw=sessionStorage.getItem(key);if(!raw||!connected)return;
  try{
+  const x=JSON.parse(raw);
+  if(!/^(0[1-9]|[1-3][0-9]|4[0-7])$/.test(x.pref)||!Number.isFinite(x.at)||Date.now()-x.at>1800000)throw Error("地域選択の有効期限が切れました");
+  setView("profile");setSub("special");
+  $("special-pref").value=x.pref;
   await fillArea("special-pref","special-area");
-  if(x.area&&[...$("special-area").options].some(o=>o.value===x.area))$("special-area").value=x.area;
-  const region=$("special-area").value||x.pref,grain=region.length===2?"pref":"secondary";
-  const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:"include",grain,basis:"nationalIndex",category:"ALL",min:"1000000"}));
-  if(!Array.isArray(d.rows))throw Error("ランキング形式が未対応です");
-  const exportData={regionName:d.regionName,region,grain,rows:d.rows.slice(0,100),eligible:d.eligible,at:Date.now()};
-  sessionStorage.removeItem("atlas.region.selection.v1");
-  $("atlas-region-transition").classList.remove("active");
-  specialRender(d);
- }catch(e){$("special-status").textContent="地域データ取得エラー："+e.message;$("atlas-region-transition").classList.remove("active");status("地域分析の取得に失敗しました："+e.message)}
+  if(x.area){if(![...$("special-area").options].some(o=>o.value===x.area))throw Error("指定した二次医療圏が見つかりません");$("special-area").value=x.area;}
+  await specialLoad();
+ }catch(e){$("special-status").textContent="地域データ取得エラー："+e.message;status(e.message)}
+ finally{sessionStorage.removeItem(key);$("atlas-region-transition").classList.remove("active")}
 }
 function specialEnable(prefs){$("special-pref").replaceChildren(new Option("都道府県を選択",""));for(const p of prefs)$("special-pref").add(new Option(p.name,p.code));for(const id of specialControls)$(id).disabled=id==="special-area";for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=false;$("special-context").textContent="都道府県を選択してください。";$("special-status").textContent="地域選択待ち"}
 function specialValue(v,b){return b==="lq"?idx(v)+" 倍":b==="nationalIndex"?idx(v):specialMoney(v)}
