@@ -11,7 +11,7 @@ function profile({areas,procedures,region,scope="include",basis="raw",side="high
  if(!["raw","population"].includes(basis)||!["high","low","all"].includes(side)||!["list","highlights"].includes(mode))throw Error("invalid filters");
  if(!Array.isArray(areas)||!Array.isArray(procedures)||!/^\d{2,4}$/.test(region))throw Error("invalid input");
  const ownArea=areas.find(a=>a.code===region);
- if(!ownArea||!(ownArea.population>0))throw Error("unknown region");
+ if(!ownArea)throw Error("unknown region");
  page=Math.max(0,Math.min(100000,Number.parseInt(page,10)||0));
  pageSize=Math.max(1,Math.min(100,Number.parseInt(pageSize,10)||50));
  const valid=n=>typeof n==="number"&&Number.isFinite(n)&&n>=0;
@@ -25,10 +25,11 @@ function profile({areas,procedures,region,scope="include",basis="raw",side="high
   const sum=eligible.reduce((v,a)=>v+p.counts[a.code],0);
   const pop=popEligible.reduce((v,a)=>v+a.population,0);
   const popSum=popEligible.reduce((v,a)=>v+p.counts[a.code],0);
-  if(!(sum>0)||!(pop>0))continue;
+  if(!(sum>0))continue;
   const meanRaw=sum/eligible.length,meanPopulation=popSum/pop*10000;
   const metrics={};
   for(const b of ["raw","population"]){
+   if(b==="population"&&(!(ownArea.population>0)||!Number.isFinite(ownArea.population)||popEligible.length<2||!(popSum>0)||!(pop>0))){metrics[b]=null;continue;}
    const ownValue=b==="raw"?own:own/ownArea.population*10000;
    const mean=b==="raw"?meanRaw:meanPopulation;
    const values=(b==="raw"?eligible:popEligible).map(a=>b==="raw"?p.counts[a.code]:p.counts[a.code]/a.population*10000);
@@ -39,12 +40,12 @@ function profile({areas,procedures,region,scope="include",basis="raw",side="high
   rows.push({code:p.code,name:p.name,category:p.category||"",count:own,metrics,coverage:eligible.length/areas.length,scope});
  }
  const query=String(q).normalize("NFKC").toLowerCase().trim();
- const matches=rows.filter(r=>(!query||(r.code+" "+r.name+" "+r.category).normalize("NFKC").toLowerCase().includes(query))&&(side==="all"||(side==="high"?r.metrics[basis].index>100:r.metrics[basis].index<100)));
+ const matches=rows.filter(r=>r.metrics[basis]&&(!query||(r.code+" "+r.name+" "+r.category).normalize("NFKC").toLowerCase().includes(query))&&(side==="all"||(side==="high"?r.metrics[basis].index>100:r.metrics[basis].index<100)));
  matches.sort((a,b)=>side==="low"?a.metrics[basis].index-b.metrics[basis].index:side==="high"?b.metrics[basis].index-a.metrics[basis].index:Math.abs(b.metrics[basis].index-100)-Math.abs(a.metrics[basis].index-100));
  const compact=r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[basis],coverage:r.coverage});
  if(mode==="highlights"){
   const tops={};for(const b of ["raw","population"])for(const dir of ["high","low"]){
-   const selected=rows.filter(r=>dir==="high"?r.metrics[b].index>100:r.metrics[b].index<100);
+   const selected=rows.filter(r=>r.metrics[b]&&(dir==="high"?r.metrics[b].index>100:r.metrics[b].index<100));
    selected.sort((a,c)=>dir==="high"?c.metrics[b].index-a.metrics[b].index:a.metrics[b].index-c.metrics[b].index);
    tops[b+dir[0].toUpperCase()+dir.slice(1)]=selected.slice(0,30).map(r=>({code:r.code,name:r.name,category:r.category,count:r.count,...r.metrics[b],coverage:r.coverage}));
   }
