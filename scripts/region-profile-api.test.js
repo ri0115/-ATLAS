@@ -1,0 +1,10 @@
+"use strict";
+const {test}=require("node:test"),assert=require("node:assert/strict");
+const {profile,normalizeNdb}=require("./region-profile-api");
+const areas=[{code:"0101",name:"A",population:100},{code:"0102",name:"B",population:300},{code:"0103",name:"C",population:null}];
+const procedures=[{code:"123456789",name:"Test",counts:{"0101":20,"0102":30,"0103":100}}];
+const query={areas,procedures,region:"0101",side:"all"};
+test("raw and pooled population benchmarks",()=>{const r=profile(query).rows[0],p=profile({...query,basis:"population"}).rows[0];assert.equal(r.average,50);assert.equal(r.rank,3);assert.equal(r.eligible,3);assert.equal(p.average,1250);assert.equal(p.index,160);assert.equal(p.eligible,2)});
+test("missing own population preserves raw ranking",()=>{assert.equal(profile({...query,region:"0103"}).total,1);assert.equal(profile({...query,region:"0103",basis:"population"}).total,0)});
+test("suppression is not zero",()=>{const p=[{...procedures[0],counts:{"0101":20,"0102":null,"0103":0}}];assert.equal(profile({...query,procedures:p}).rows[0].average,10)});
+test("source adapter rejects ambiguous geography and partial suppression",()=>{const row=v=>{const r=[];r[0]="123456789";r[1]="Test";r[10]="count";r[11]="include";r[17]=v;return r};const db={areas:{secondary:areas.map(a=>[a.code,a.name])},rows:[row([20,30,0]),row([-1,5,0])]};const p=normalizeNdb(db,areas,"secondary","include")[0];assert.equal(p.counts["0101"],null);assert.equal(p.counts["0102"],35);assert.equal(p.counts["0103"],0);assert.throws(()=>normalizeNdb(db,[{code:"9999"}],"secondary","include"))});
