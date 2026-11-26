@@ -428,6 +428,101 @@ function renderRegionComposition(panel,d,palette){
  renderRegionLqRadar(panel,rows,palette);
 }
 
+// Compare only matching geographic grain and scope. No additional raw data or credentials.
+function regionCompareMetric(row,data,metric){
+ if(!row||!Number.isFinite(row.amount)||row.amount<0)return null;
+ if(metric==="lq")return Number.isFinite(row.nationalShare)&&row.nationalShare>0&&Number.isFinite(row.lq)&&row.lq>=0?row.lq:null;
+ if(metric==="share")return Number.isFinite(data.total?.amount)&&data.total.amount>0?row.amount/data.total.amount*100:null;
+ if(metric==="perCapita")return Number.isFinite(data.population)&&data.population>0?row.amount/data.population:null;
+ return null;
+}
+function regionCompareColor(value,metric,max){
+ if(value===null)return {bg:"#f0f2f4",fg:"#697c88"};
+ if(metric==="lq"){
+  const f=value===0?1:Math.min(1,Math.abs(Math.log2(value))/2);
+  if(Math.abs(value-1)<1e-10)return {bg:"#fff",fg:"#183b50"};
+  const rgb=value>1?[17,125,129]:[74,112,169];
+  const k=.15+.85*f;
+  return {bg:"rgb("+rgb.map(n=>Math.round(255+(n-255)*k)).join(",")+")",fg:k>.72?"#fff":"#183b50"};
+ }
+ const f=max>0?Math.min(1,value/max):0,k=.06+.94*f;
+ return {bg:"rgb("+[17,125,129].map(n=>Math.round(255+(n-255)*k)).join(",")+")",fg:k>.72?"#fff":"#183b50"};
+}
+function createRegionPeerComparison({parent,baseData,context,api,signal,palette}){
+ const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
+ const fmt=(n,d=2)=>Number(n).toLocaleString("ja-JP",{maximumFractionDigits:d});
+ const panel=el("section",undefined,"margin-top:24px;padding-top:20px;border-top:1px solid #dce6eb;min-width:0");
+ panel.append(el("h3","地域間比較｜診療報酬区分別ヒートマップ","font-size:20px;color:#183b50;margin:0 0 8px"),el("p","選択地域を基準に最大3地域を追加できます。同じ地理単位・公費条件・2024年度の参考換算額を使用します。","font-size:14px;color:#506a7b;line-height:1.7"));
+ const style="box-sizing:border-box;width:100%;padding:10px;border:1px solid #ccdbe3;border-radius:6px;background:#fff;color:#183b50;font-size:14px";
+ const form=el("form",undefined,"display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;align-items:end");
+ const field=(name,node)=>{const l=el("label",undefined,"display:grid;gap:6px;font-size:13px;color:#405f70;font-weight:700");l.append(el("span",name),node);form.append(l)};
+ const pref=el("select",undefined,style),area=el("select",undefined,style),metric=el("select",undefined,style);
+ const option=(value,name)=>{const x=el("option",name);x.value=value;return x};
+ pref.append(option("","都道府県を選択"));pref.disabled=true;field("比較する都道府県",pref);
+ if(context.grain==="secondary"){area.append(option("","医療圏を選択"));area.disabled=true;field("比較する二次医療圏",area)}
+ for(const [v,n] of [["lq","地域特化指数（LQ）"],["share","参考換算額構成比（%）"],["perCapita","人口1人当たり参考換算額（円）"]])metric.append(option(v,n));field("比較指標",metric);
+ const add=el("button","比較地域を追加","padding:11px;border:0;border-radius:6px;background:#117d81;color:#fff;font-weight:700;cursor:pointer");add.type="submit";add.disabled=true;form.append(add);panel.append(form);
+ const status=el("p","地域一覧を取得中…","font-size:13px;color:#506a7b;margin:12px 0");status.setAttribute("role","status");panel.append(status);
+ const legend=el("div",undefined,"display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0;font-size:13px;color:#405f70");panel.append(legend);
+ const wrap=el("div",undefined,"overflow:auto;max-width:100%");panel.append(wrap);
+ const entries=new Map([[context.region,baseData]]),categories=Object.keys(palette);
+ let disposed=false,areaRequest=null,loadRequest=null,areaVersion=0,busy=false;
+ const isDead=()=>disposed||signal?.aborted;
+ signal?.addEventListener("abort",()=>{disposed=true;areaRequest?.abort();loadRequest?.abort()},{once:true});
+ const pick=()=>context.grain==="pref"?pref.value:area.value;
+ function update(){add.disabled=isDead()||busy||entries.size>=4||!pick()||entries.has(pick())}
+ function render(){
+  wrap.replaceChildren();legend.replaceChildren();const m=metric.value||"lq";
+  const all=[...entries.values()];const max=Math.max(0,...all.flatMap(d=>categories.map(k=>regionCompareMetric(d.rows.find(r=>r.category===k),d,m)??0)));
+  const samples=m==="lq"?[[.25,"0.25倍以下"],[.5,"0.5倍"],[1,"1倍（全国基準）"],[2,"2倍"],[4,"4倍以上"]]:[[0,"0"],[max/2,fmt(max/2,m==="perCapita"?0:2)],[max,fmt(max,m==="perCapita"?0:2)+(m==="share"?"%":"円")]];
+  for(const [v,label] of samples){const color=regionCompareColor(v,m,max);legend.append(el("span",label,"padding:6px 8px;border:1px solid #dce6eb;border-radius:4px;background:"+color.bg+";color:"+color.fg))}
+  legend.append(el("span","— 比較不能","padding:6px 8px;background:#f0f2f4;color:#697c88;border-radius:4px"));
+  const table=el("table",undefined,"width:100%;min-width:"+Math.max(450,210+entries.size*150)+"px;border-collapse:separate;border-spacing:4px;font-size:14px;table-layout:fixed");
+  const head=el("tr");head.append(el("th","診療報酬区分","text-align:left;width:185px;padding:9px;color:#183b50"));
+  for(const [code,d] of entries){const th=el("th",undefined,"background:#eef4f6;padding:10px;border-radius:5px;color:#183b50;overflow-wrap:anywhere");th.append(el("div",d.name||code),el("div",code===context.region?"基準地域":"比較地域","font-size:11px;color:#506a7b;margin-top:4px"));
+   if(code!==context.region){const b=el("button","削除","font-size:12px;padding:4px 8px;margin-top:5px;border:1px solid #ccdbe3;border-radius:4px;background:white;cursor:pointer");b.type="button";b.addEventListener("click",()=>{entries.delete(code);render();update();status.textContent="比較対象 "+entries.size+" 地域"});th.append(b)}head.append(th)}
+  table.append(head);
+  const totals=el("tr");totals.append(el("th","参考換算額合計","text-align:left;padding:8px;color:#183b50"));
+  for(const d of all)totals.append(el("td",Number.isFinite(d.total?.amount)?fmt(d.total.amount/1e8)+" 億円":"—","padding:9px;text-align:center;font-weight:700;background:#f3f6f8;border-radius:4px"));table.append(totals);
+  for(const cat of categories){const tr=el("tr");tr.append(el("th",cat.replace("_"," "),"text-align:left;padding:8px;color:#183b50;overflow-wrap:anywhere"));
+   for(const d of all){const value=regionCompareMetric(d.rows.find(r=>r.category===cat),d,m),c=regionCompareColor(value,m,max);
+    const label=value===null?"—":fmt(value,m==="perCapita"?0:2)+(m==="lq"?"倍":m==="share"?"%":"円");
+    const td=el("td",label,"padding:10px;text-align:center;font-weight:700;border-radius:4px;border:1px solid #e0e7ec;background:"+c.bg+";color:"+c.fg);td.title=(d.name||"地域")+"｜"+cat.replace("_"," ")+"｜"+label;tr.append(td)}table.append(tr)}
+  wrap.append(table);
+  legend.append(el("span",m==="lq"?"緑：全国より構成比が大きい／青：小さい。色の範囲は0.25～4倍に固定。":"色の濃さは現在の比較表全体で共通の最大値を基準に表示。","flex-basis:100%;line-height:1.6"));
+ }
+ metric.addEventListener("change",render);
+ pref.addEventListener("change",async()=>{
+  areaVersion++;areaRequest?.abort();area.replaceChildren(option("","医療圏を選択"));area.disabled=true;update();
+  if(context.grain!=="secondary"||!pref.value||isDead())return;
+  const v=areaVersion,p=pref.value,c=areaRequest=new AbortController();status.textContent="二次医療圏を取得中…";
+  try{const d=await api("/v1/areas?pref="+encodeURIComponent(p),c.signal);if(isDead()||c.signal.aborted||v!==areaVersion)return;
+   if(!Array.isArray(d.areas))throw Error("医療圏一覧の形式が不正です");
+   for(const r of d.areas)if(/^\d{4}$/.test(r.code)&&r.code.startsWith(p))area.append(option(r.code,r.name));area.disabled=false;status.textContent="比較する医療圏を選択してください。";update();
+  }catch(e){if(!isDead()&&!c.signal.aborted&&v===areaVersion)status.textContent="医療圏一覧取得エラー："+e.message}
+ });
+ area.addEventListener("change",update);
+ form.addEventListener("submit",async e=>{
+  e.preventDefault();const code=pick();if(isDead()||busy||entries.has(code)||entries.size>=4||!(context.grain==="pref"?/^\d{2}$/:/^\d{4}$/).test(code))return;
+  busy=true;update();const c=loadRequest=new AbortController();status.textContent="比較地域を取得中…";
+  try{const d=await api("/v1/categories/"+encodeURIComponent(code)+"?"+new URLSearchParams({scope:context.scope,grain:context.grain}),c.signal);
+   if(isDead()||c.signal.aborted)return;
+   if(d.scope!==context.scope||d.grain!==context.grain||(d.region!=null&&String(d.region)!==code)||!Array.isArray(d.rows)||!Number.isFinite(d.total?.amount))throw Error("集計条件が一致しません");
+   entries.set(code,d);render();status.textContent="比較対象 "+entries.size+" 地域"+(entries.size===4?"（上限）":"");
+  }catch(e){if(!isDead()&&!c.signal.aborted)status.textContent="比較地域取得エラー："+e.message}
+  finally{busy=false;update()}
+ });
+ panel.append(el("p","構成比・LQ・人口当たり参考換算額は異なる指標です。参考換算額は公表値に基づく推計で、実際の医療費や売上ではありません。欠測をゼロとして補完しません。","font-size:13px;line-height:1.7;color:#506a7b;margin-top:12px"));
+ parent.append(panel);render();
+ async function init(){
+  try{const d=await api("/v1/prefectures",signal);if(isDead())return;if(!Array.isArray(d.prefectures)||d.prefectures.length!==47)throw Error("都道府県一覧の形式が不正です");
+   for(const r of d.prefectures)pref.append(option(r.code,r.name));pref.disabled=false;
+   pref.value=context.region.slice(0,2);status.textContent="比較地域を選択してください。";if(context.grain==="secondary")pref.dispatchEvent(new Event("change"));update();
+  }catch(e){if(!isDead())status.textContent="地域一覧取得エラー："+e.message}
+ }
+ init();return {panel};
+}
+
 function createRegionDashboardController({root,status,api,onCode}){
  let request=null,version=0;
  function reset(){version++;request?.abort();request=null;root.replaceChildren();status.textContent="データ未取得";}
@@ -448,6 +543,7 @@ function createRegionDashboardController({root,status,api,onCode}){
     if(c.signal.aborted||v!==version)return;
     if(category.scope!==scope||category.grain!==grain||(category.region!=null&&String(category.region)!==region))throw Error("地域または集計条件が一致しません");
     renderRegionComposition(composition,category,CATEGORY_PALETTE);
+    createRegionPeerComparison({parent:composition,baseData:category,context:{region,scope,grain},api,signal:c.signal,palette:CATEGORY_PALETTE});
    }).catch(e=>{if(!c.signal.aborted&&v===version)composition.textContent="参考換算額構成の取得エラー："+e.message});
 
    status.textContent=d.regionName+"｜比較可能 "+d.visuals.comparableCodes.toLocaleString("ja-JP")+" コード";
