@@ -325,6 +325,63 @@ function createRegionCodeSearch({root,api,context,onCode,signal}){
  return {section,abort};
 }
 
+// A binary treemap preserves area exactly, with deterministic ordering and no external library.
+function regionTreemapLayout(rows,w,h){
+ const valid=rows.filter(r=>Number.isFinite(r.amount)&&r.amount>0).sort((a,b)=>b.amount-a.amount||a.category.localeCompare(b.category));
+ const out=[];function split(items,x,y,width,height){
+  if(!items.length)return;
+  if(items.length===1){out.push({...items[0],x,y,width,height});return}
+  const sum=items.reduce((n,r)=>n+r.amount,0);
+  let k=1,part=items[0].amount;
+  while(k<items.length-1&&Math.abs(part+items[k].amount-sum/2)<Math.abs(part-sum/2)){part+=items[k++].amount}
+  const f=part/sum;
+  if(width>=height){const d=width*f;split(items.slice(0,k),x,y,d,height);split(items.slice(k),x+d,y,width-d,height)}
+  else{const d=height*f;split(items.slice(0,k),x,y,width,d);split(items.slice(k),x,y+d,width,height-d)}
+ }split(valid,0,0,w,h);return out;
+}
+function renderRegionComposition(panel,d,palette){
+ const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
+ const fmt=n=>Number(n).toLocaleString("ja-JP",{maximumFractionDigits:2}),money=n=>fmt(n/1e8)+" 億円";
+ if(!Array.isArray(d.rows)||!Number.isFinite(d.total?.amount)||d.total.amount<0||d.rows.some(r=>typeof r.category!=="string"||!Number.isFinite(r.amount)||r.amount<0))throw Error("区分別集計の形式が不正です");
+ if(new Set(d.rows.map(r=>r.category)).size!==d.rows.length)throw Error("区分が重複しています");
+ const rows=[...d.rows].sort((a,b)=>b.amount-a.amount),sum=rows.reduce((n,r)=>n+r.amount,0);
+ if(Math.abs(sum-d.total.amount)>Math.max(1,d.total.amount*1e-8))throw Error("区分合計と総額が一致しません");
+ panel.replaceChildren();
+ panel.append(el("h3","診療報酬の構成｜参考換算額","font-size:19px;color:#183b50;margin:0 0 8px"),el("p","四角形の面積＝地域内の参考換算額の割合。A〜O区分（手術・輸血は分離）を比較します。算定回数の構成比ではありません。","font-size:13px;color:#506a7b;line-height:1.7;margin-bottom:14px"));
+ if(!sum){panel.append(el("p","比較可能な参考換算額がありません。"));return}
+ const summary=el("div",undefined,"display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin:8px 0 14px");
+ summary.append(el("strong",money(sum),"font-size:27px;color:#183b50"),el("span","最大区分："+rows[0].category.replace("_"," ")+"（"+fmt(rows[0].amount/sum*100)+"%）","font-size:14px;color:#506a7b"));panel.append(summary);
+ const layout=el("div",undefined,"display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:20px;align-items:start");panel.append(layout);
+ const map=el("div",undefined,"position:relative;width:100%;aspect-ratio:1.55;background:#f2f6f8;border-radius:8px;overflow:hidden");map.setAttribute("aria-label","参考換算額の区分別構成ツリーマップ");layout.append(map);
+ const legend=el("div",undefined,"display:grid;gap:4px");layout.append(legend);
+ const selected=el("div",undefined,"padding:13px;background:#f1f7f8;border-radius:8px;margin-top:12px;font-size:14px;color:#183b50;line-height:1.7");selected.setAttribute("aria-live","polite");panel.append(selected);
+ const boxes=new Map(),items=new Map();
+ function show(r){for(const [k,b] of boxes)b.style.boxShadow=k===r.category?"inset 0 0 0 3px #183b50":"inset 0 0 0 1px #fff";for(const [k,b] of items)b.style.background=k===r.category?"#e7f2f3":"transparent";selected.textContent=r.category.replace("_"," ")+" ｜ "+money(r.amount)+" ｜ 地域内構成比 "+fmt(r.amount/sum*100)+"%"+(Number.isFinite(r.nationalShare)?" ｜ 全国原票の構成比 "+fmt(r.nationalShare*100)+"%":"")+(Number.isFinite(r.lq)?" ｜ 地域特化指数（LQ） "+fmt(r.lq)+"倍":"")}
+ for(const r of regionTreemapLayout(rows,100,100/1.55)){
+  const b=el("button",undefined,"position:absolute;left:"+r.x+"%;top:"+(r.y*1.55)+"%;width:"+r.width+"%;height:"+(r.height*1.55)+"%;background:"+(palette[r.category]||"#8c9ca7")+";color:#fff;border:0;padding:6px;overflow:hidden;cursor:pointer;text-align:left;box-shadow:inset 0 0 0 1px #fff;display:flex;flex-direction:column;justify-content:center");
+  b.type="button";b.title=r.category.replace("_"," ")+"｜"+money(r.amount)+"｜"+fmt(r.amount/sum*100)+"%";b.setAttribute("aria-label",b.title);
+  if(r.width>=12&&r.height*1.55>=12){b.append(el("strong",r.width>=23?r.category.replace("_"," "):r.category.split("_")[0],"font-size:clamp(11px,1.2vw,17px);line-height:1.3;overflow-wrap:anywhere;text-shadow:0 1px 3px #0008"),el("span",fmt(r.amount/sum*100)+"%","font-size:clamp(11px,1.2vw,16px);text-shadow:0 1px 3px #0008"))}
+  b.addEventListener("click",()=>show(r));b.addEventListener("focus",()=>show(r));boxes.set(r.category,b);map.append(b);
+ }
+ for(const r of rows){const b=el("button",undefined,"display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;gap:8px;align-items:center;text-align:left;border:0;border-bottom:1px solid #e7edf1;background:transparent;padding:7px 5px;color:#183b50;cursor:pointer;font-size:13px;line-height:1.4");b.type="button";b.append(el("span",undefined,"height:10px;border-radius:2px;background:"+(palette[r.category]||"#8c9ca7")),el("span",r.category.replace("_"," ")),el("strong",money(r.amount)),el("span",fmt(r.amount/sum*100)+"%","min-width:48px;text-align:right"));b.addEventListener("click",()=>show(r));b.addEventListener("focus",()=>show(r));items.set(r.category,b);legend.append(b)}
+ show(rows[0]);panel.append(el("p","クリックまたはキーボードで区分を選択すると、参考換算額・構成比・LQを確認できます。公表値に基づく参考換算額であり、実際の医療費・売上高ではありません。秘匿・点数なしのセルは既存の区分別APIの集計条件に従います。","font-size:13px;line-height:1.7;color:#506a7b;margin:12px 0 0"));
+ // Compare shares directly rather than implying that a count-based radar is a market-size graph.
+ const compare=el("section",undefined,"margin-top:24px;padding-top:20px;border-top:1px solid #dce6eb");
+ compare.append(el("h3","地域と全国の診療構成比","font-size:18px;color:#183b50;margin:0 0 8px"),el("p","同じ診療報酬区分の参考換算額構成比を比較。LQ＝地域構成比÷全国構成比。1倍を超える区分は、全国原票より地域内の構成割合が大きいことを示します。","font-size:13px;line-height:1.7;color:#506a7b"));
+ const legend2=el("div","■ 地域（緑）　■ 全国原票（青灰）","font-size:13px;color:#506a7b;margin:10px 0");compare.append(legend2);
+ const max=Math.max(.01,...rows.map(r=>r.amount/sum),...rows.map(r=>Number.isFinite(r.nationalShare)?r.nationalShare:0));
+ for(const r of rows){
+  const item=el("div",undefined,"display:grid;grid-template-columns:minmax(100px,180px) minmax(0,1fr) 78px;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #e7edf1");
+  item.append(el("div",r.category.replace("_"," "),"font-size:13px;color:#183b50;overflow-wrap:anywhere"));
+  const bars=el("div",undefined,"display:grid;gap:5px");
+  for(const [v,color,label] of [[r.amount/sum,"#168e86","地域"],[r.nationalShare,"#8197ae","全国"]]){
+   const row=el("div",undefined,"display:grid;grid-template-columns:minmax(0,1fr) 62px;gap:6px;align-items:center");
+   const track=el("div",undefined,"height:12px;border-radius:2px;background:#f0f4f6;overflow:hidden");if(Number.isFinite(v)&&v>=0)track.append(el("div",undefined,"height:100%;width:"+Math.min(100,v/max*100)+"%;background:"+color));row.append(track,el("span",Number.isFinite(v)?fmt(v*100)+"%":"—","font-size:12px;text-align:right;color:#506a7b"));row.setAttribute("aria-label",label+" "+(Number.isFinite(v)?fmt(v*100)+"%":"未取得"));bars.append(row)
+  }
+  item.append(bars,el("strong",Number.isFinite(r.lq)?fmt(r.lq)+"倍":"—","font-size:14px;text-align:right;color:"+(r.lq>1?"#087e75":"#506a7b")));compare.append(item);
+ }panel.append(compare);
+}
+
 function createRegionDashboardController({root,status,api,onCode}){
  let request=null,version=0;
  function reset(){version++;request?.abort();request=null;root.replaceChildren();status.textContent="データ未取得";}
@@ -338,6 +395,15 @@ function createRegionDashboardController({root,status,api,onCode}){
    renderRegionDashboard(root,d,openCode);
    const search=createRegionCodeSearch({root,api,context:{region,scope,grain},onCode:openCode,signal:c.signal});
    root.insertBefore(search.section,root.children[1]||null);
+   const composition=document.createElement("section");composition.className="region-chart";composition.style.cssText="grid-column:1/-1;min-width:0;padding:20px;border:1px solid #dce6eb;border-radius:12px;background:#fff";composition.textContent="診療報酬構成を取得中…";
+   root.insertBefore(composition,root.children[2]||null);
+   // Independent request: failure never removes the already loaded count analysis.
+   api("/v1/categories/"+encodeURIComponent(region)+"?"+new URLSearchParams({scope,grain}),c.signal).then(category=>{
+    if(c.signal.aborted||v!==version)return;
+    if(category.scope!==scope||category.grain!==grain||(category.region!=null&&String(category.region)!==region))throw Error("地域または集計条件が一致しません");
+    renderRegionComposition(composition,category,CATEGORY_PALETTE);
+   }).catch(e=>{if(!c.signal.aborted&&v===version)composition.textContent="参考換算額構成の取得エラー："+e.message});
+
    status.textContent=d.regionName+"｜比較可能 "+d.visuals.comparableCodes.toLocaleString("ja-JP")+" コード";
   }catch(e){if(!c.signal.aborted&&v===version){root.replaceChildren();status.textContent="地域プロファイル取得エラー："+e.message}}
  }
