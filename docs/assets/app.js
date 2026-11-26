@@ -448,6 +448,35 @@ function regionCompareColor(value,metric,max){
  const f=max>0?Math.min(1,value/max):0,k=.06+.94*f;
  return {bg:"rgb("+[17,125,129].map(n=>Math.round(255+(n-255)*k)).join(",")+")",fg:k>.72?"#fff":"#183b50"};
 }
+// Approximate shared boundary candidates based on the reviewed, simplified SVG.
+function regionBoundaryEdges(path){
+ const edges=new Map();
+ for(const ring of path.matchAll(/M([^MZ]+)Z/g)){
+  const pts=ring[1].split("L").map(x=>x.trim().split(/\s+/).map(n=>Math.round(Number(n)*10)));
+  if(pts.some(p=>p.length!==2||p.some(n=>!Number.isFinite(n))))throw Error("境界座標の形式が不正です");
+  for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];if(a[0]===b[0]&&a[1]===b[1])continue;const key=[a.join(","),b.join(",")].sort().join("|");edges.set(key,Math.hypot(a[0]-b[0],a[1]-b[1])/10)}
+ }
+ return edges;
+}
+function regionBoundaryCandidates(paths,code){
+ const own=paths.find(p=>p.code===code);if(!own)throw Error("境界図に選択地域がありません");
+ const ref=regionBoundaryEdges(own.d);if(!ref.size)throw Error("選択地域の境界がありません");
+ const out=[];
+ for(const p of paths){if(p.code===code)continue;let length=0;for(const k of regionBoundaryEdges(p.d).keys())length+=ref.get(k)||0;if(length>=1)out.push({code:p.code,name:p.name,length})}
+ return out.sort((a,b)=>b.length-a.length||a.code.localeCompare(b.code));
+}
+let regionBoundaryCatalogPromise=null;
+function getRegionBoundaryCatalog(){
+ if(!regionBoundaryCatalogPromise)regionBoundaryCatalogPromise=(async()=>{
+  const r=await fetch("./assets/medical-areas-330.svg",{method:"GET",cache:"force-cache",credentials:"same-origin",redirect:"error"});if(!r.ok)throw Error("境界図の取得に失敗しました");
+  const xml=new DOMParser().parseFromString(await r.text(),"image/svg+xml");if(xml.documentElement.localName!=="svg"||xml.querySelector("parsererror"))throw Error("境界図の形式が不正です");
+  const rows=[...xml.querySelectorAll("path[data-code]")].map(p=>({code:p.getAttribute("data-code"),name:p.querySelector("title")?.textContent||p.getAttribute("data-code"),d:p.getAttribute("d")||""}));
+  if(rows.length!==330||new Set(rows.map(p=>p.code)).size!==330||rows.some(p=>!/^\d{4}$/.test(p.code)||!p.d.startsWith("M")))throw Error("330医療圏の境界図と一致しません");
+  return rows;
+ })().catch(e=>{regionBoundaryCatalogPromise=null;throw e});
+ return regionBoundaryCatalogPromise;
+}
+
 function createRegionPeerComparison({parent,baseData,context,api,signal,palette}){
  const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
  const fmt=(n,d=2)=>Number(n).toLocaleString("ja-JP",{maximumFractionDigits:d});
@@ -467,10 +496,11 @@ function createRegionPeerComparison({parent,baseData,context,api,signal,palette}
  const wrap=el("div",undefined,"overflow:auto;max-width:100%");panel.append(wrap);
  const entries=new Map([[context.region,baseData]]),categories=Object.keys(palette);
  let disposed=false,areaRequest=null,loadRequest=null,areaVersion=0,busy=false;
+ let nearButton=null,nearBusy=false;
  const isDead=()=>disposed||signal?.aborted;
  signal?.addEventListener("abort",()=>{disposed=true;areaRequest?.abort();loadRequest?.abort()},{once:true});
  const pick=()=>context.grain==="pref"?pref.value:area.value;
- function update(){add.disabled=isDead()||busy||entries.size>=4||!pick()||entries.has(pick())}
+ function update(){add.disabled=isDead()||busy||nearBusy||entries.size>=4||!pick()||entries.has(pick());if(nearButton)nearButton.disabled=isDead()||busy||nearBusy||entries.size>=4}
  function render(){
   wrap.replaceChildren();legend.replaceChildren();const m=metric.value||"lq";
   const all=[...entries.values()];const max=Math.max(0,...all.flatMap(d=>categories.map(k=>regionCompareMetric(d.rows.find(r=>r.category===k),d,m)??0)));
@@ -502,16 +532,40 @@ function createRegionPeerComparison({parent,baseData,context,api,signal,palette}
   }catch(e){if(!isDead()&&!c.signal.aborted&&v===areaVersion)status.textContent="医療圏一覧取得エラー："+e.message}
  });
  area.addEventListener("change",update);
+ async function addRegion(code){
+  if(isDead()||entries.has(code)||entries.size>=4||!(context.grain==="pref"?/^\d{2}$/:/^\d{4}$/).test(code))return false;
+  const c=loadRequest=new AbortController();
+  const d=await api("/v1/categories/"+encodeURIComponent(code)+"?"+new URLSearchParams({scope:context.scope,grain:context.grain}),c.signal);
+  if(isDead()||c.signal.aborted)return false;
+  if(d.scope!==context.scope||d.grain!==context.grain||(d.region!=null&&String(d.region)!==code)||!Array.isArray(d.rows)||!Number.isFinite(d.total?.amount))throw Error("集計条件が一致しません");
+  entries.set(code,d);render();return true;
+ }
  form.addEventListener("submit",async e=>{
-  e.preventDefault();const code=pick();if(isDead()||busy||entries.has(code)||entries.size>=4||!(context.grain==="pref"?/^\d{2}$/:/^\d{4}$/).test(code))return;
-  busy=true;update();const c=loadRequest=new AbortController();status.textContent="比較地域を取得中…";
-  try{const d=await api("/v1/categories/"+encodeURIComponent(code)+"?"+new URLSearchParams({scope:context.scope,grain:context.grain}),c.signal);
-   if(isDead()||c.signal.aborted)return;
-   if(d.scope!==context.scope||d.grain!==context.grain||(d.region!=null&&String(d.region)!==code)||!Array.isArray(d.rows)||!Number.isFinite(d.total?.amount))throw Error("集計条件が一致しません");
-   entries.set(code,d);render();status.textContent="比較対象 "+entries.size+" 地域"+(entries.size===4?"（上限）":"");
-  }catch(e){if(!isDead()&&!c.signal.aborted)status.textContent="比較地域取得エラー："+e.message}
+  e.preventDefault();const code=pick();if(isDead()||busy||nearBusy||entries.has(code)||entries.size>=4||!code)return;
+  busy=true;update();status.textContent="比較地域を取得中…";
+  try{await addRegion(code);if(!isDead())status.textContent="比較対象 "+entries.size+" 地域"+(entries.size===4?"（上限）":"")}
+  catch(e){if(!isDead())status.textContent="比較地域取得エラー："+e.message}
   finally{busy=false;update()}
  });
+ if(context.grain==="secondary"){
+  const near=el("div",undefined,"background:#f4f8f9;border:1px solid #dce6eb;border-radius:8px;padding:14px;margin:12px 0");
+  near.append(el("h4","地図上の隣接候補","font-size:15px;color:#183b50;margin:0 0 6px"),el("p","境界を共有する候補から、共有する線の長い順に空き枠（最大3地域）へ追加します。2020年度原図を330医療圏に照合した概略図を使用。交通時間・患者流動に基づく近隣ではありません。","font-size:13px;line-height:1.7;color:#506a7b;margin:0 0 10px"));
+  nearButton=el("button","隣接候補を自動追加","padding:10px 14px;border:1px solid #117d81;border-radius:6px;background:white;color:#117d81;font-weight:700;cursor:pointer");nearButton.type="button";near.append(nearButton);
+  const nearStatus=el("p","未抽出","font-size:13px;line-height:1.7;color:#405f70;margin:8px 0 0");nearStatus.setAttribute("role","status");near.append(nearStatus);
+  panel.insertBefore(near,status);
+  nearButton.addEventListener("click",async()=>{
+   if(isDead()||busy||nearBusy||entries.size>=4)return;
+   nearBusy=true;update();nearStatus.textContent="地図から隣接候補を抽出中…";
+   try{
+    const candidates=regionBoundaryCandidates(await getRegionBoundaryCatalog(),context.region);if(isDead())return;
+    const remaining=candidates.filter(r=>!entries.has(r.code));if(!remaining.length){nearStatus.textContent=candidates.length?"すべての隣接候補は比較表に追加済みです。":"概略地図で共有境界を検出できませんでした。手動で比較地域を追加できます。";return}
+    const targets=remaining.slice(0,4-entries.size),added=[],failed=[];
+    for(const r of targets){if(isDead())return;nearStatus.textContent=r.name+" の比較データを取得中…";try{if(await addRegion(r.code))added.push(r.name)}catch(e){if(!isDead())failed.push(r.name+"（"+e.message+"）")}}
+    if(!isDead()){nearStatus.textContent="隣接候補 "+candidates.length+"地域："+candidates.map(r=>r.name).join("、")+"。追加："+(added.join("、")||"なし")+(failed.length?"。取得失敗："+failed.join("、"):"");status.textContent="比較対象 "+entries.size+" 地域";}
+   }catch(e){if(!isDead())nearStatus.textContent="隣接候補の取得エラー："+e.message}
+   finally{nearBusy=false;update()}
+  });
+ }
  panel.append(el("p","構成比・LQ・人口当たり参考換算額は異なる指標です。参考換算額は公表値に基づく推計で、実際の医療費や売上ではありません。欠測をゼロとして補完しません。","font-size:13px;line-height:1.7;color:#506a7b;margin-top:12px"));
  parent.append(panel);render();
  async function init(){
