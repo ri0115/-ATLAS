@@ -32,7 +32,7 @@ function restore(){for(const [id,nodes] of placeholders)$(id).replaceChildren(..
 
 function disconnect(msg="データ未接続｜ENTERから再開できます。"){regionDashboardController?.reset();$("atlas-region-transition").classList.remove("active");connectionGeneration++;clearTimeout(expiryTimer);expiryTimer=null;session=null;clearPending();catRequest?.abort();techRequest?.abort();rankRequest?.abort();for(const c of requests.values())c.abort();requests.clear();connected=starting=initializing=false;$("connect-data").disabled=false;$("connect-data").textContent="データ接続";$("disconnect-data").disabled=true;$("connection-banner").classList.remove("atlas-connected");restore();procedureReset();gbReset();specialReset();modalityReset();compareReset();document.body.classList.remove("atlas-entered");$("cover-enter").disabled=false;$("cover-cancel").hidden=true;status(msg)}
 async function connect(){if(connected||starting)return;const g=++connectionGeneration;starting=true;$("cover-enter").disabled=true;$("cover-cancel").hidden=false;$("connect-data").disabled=true;status("認証接続の準備中…");try{const state=randomProof(),proof=randomProof(),challenge=encoded(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(proof))));if(g!==connectionGeneration||!starting)return;const view=names.includes(location.hash.slice(1))?location.hash.slice(1):"profile";sessionStorage.setItem(PENDING,JSON.stringify({state,proof,view,at:Date.now(),previewRegion:regionPreview}));status("データ接続を確認しています。完了後はこの画面へ戻ります。");location.assign(BACKEND+"/atlas-session/start?"+new URLSearchParams({state,challenge}))}catch(e){if(g===connectionGeneration)disconnect("認証準備に失敗しました。ブラウザの設定を確認してENTERを押してください。")}}
-async function resumeSession(){if(!redirectCallback)return;if(redirectCallback.error){status(redirectCallback.error);return}session=redirectCallback.session;redirectCallback.session=null;connected=true;starting=false;const g=++connectionGeneration;$("cover-enter").disabled=true;$("cover-cancel").hidden=false;$("connect-data").disabled=true;$("disconnect-data").disabled=false;status("データ接続中…");expiryTimer=setTimeout(()=>disconnect("認証期限が切れました。ENTERから再接続してください。"),Math.max(0,session.exp*1000-Date.now()));try{await activate(g);if(g!==connectionGeneration)return;$("connect-data").textContent="認証接続済み";$("connection-banner").classList.add("atlas-connected");document.body.classList.add("atlas-entered");$("cover-cancel").hidden=true;const until=new Date(session.exp*1000).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});status("データ接続済み｜有効期限 "+until);const regionSelection=sessionStorage.getItem("atlas.region.selection.v1");if(regionSelection){try{const chosen=JSON.parse(regionSelection);if(chosen.pref&&Date.now()-chosen.at<1800000){await applyRegionalDeepLink()}}catch{sessionStorage.removeItem("atlas.region.selection.v1")}}}catch(e){if(g===connectionGeneration)disconnect("API接続に失敗しました。ENTERから再接続してください。")}}
+async function resumeSession(){if(!redirectCallback)return;if(redirectCallback.error){status(redirectCallback.error);sessionStorage.removeItem("atlas.region.selection.v1");$("atlas-region-transition").classList.remove("active");return}session=redirectCallback.session;redirectCallback.session=null;connected=true;starting=false;const g=++connectionGeneration;$("cover-enter").disabled=true;$("cover-cancel").hidden=false;$("connect-data").disabled=true;$("disconnect-data").disabled=false;status("データ接続中…");expiryTimer=setTimeout(()=>disconnect("認証期限が切れました。ENTERから再接続してください。"),Math.max(0,session.exp*1000-Date.now()));try{await activate(g);if(g!==connectionGeneration)return;$("connect-data").textContent="認証接続済み";$("connection-banner").classList.add("atlas-connected");document.body.classList.add("atlas-entered");$("cover-cancel").hidden=true;const until=new Date(session.exp*1000).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});status("データ接続済み｜有効期限 "+until);const regionSelection=sessionStorage.getItem("atlas.region.selection.v1");if(regionSelection){try{const chosen=JSON.parse(regionSelection);if(chosen.pref&&Date.now()-chosen.at<1800000){await applyRegionalDeepLink()}else{sessionStorage.removeItem("atlas.region.selection.v1");$("atlas-region-transition").classList.remove("active")}}catch{sessionStorage.removeItem("atlas.region.selection.v1");$("atlas-region-transition").classList.remove("active")}}}catch(e){if(g===connectionGeneration)disconnect("API接続に失敗しました。ENTERから再接続してください。")}}
 window.addEventListener("pagehide",()=>{session=null;for(const c of requests.values())c.abort();requests.clear();clearTimeout(expiryTimer)});
 window.addEventListener("pageshow",e=>{if(e.persisted&&(connected||starting))disconnect("ENTERから再接続してください。")});
 
@@ -46,7 +46,7 @@ function code(p,a){return $(a).value||$(p).value}
 async function loadTech(){if(!connected||initializing)return;techRequest?.abort();const c=techRequest=new AbortController(),g=connectionGeneration;modalityData=null;modalityCompare=null;$("modality-detail").hidden=true;$("tech-cards").replaceChildren();$("tech-status").textContent="読み込み中…";try{const selected=[code("pref","area"),code("compare-pref","compare-area")].filter(Boolean);const grain=selected.some(x=>x.length===4)?"secondary":$("tech-grain").value;const scope=$("tech-scope").value;$("tech-grain").disabled=selected.some(x=>x.length===4);const [a,b]=await Promise.all(selected.map((x,i)=>api("/v1/modality?"+new URLSearchParams({region:x,scope,grain,detail:i===0?"1":"0"}),c.signal)));if(c.signal.aborted||!connected||g!==connectionGeneration)return;$("tech-status").textContent=a.name+(b?" ／ "+b.name:"")+" · 2024年度 · "+(scope==="include"?"公費含む":"公費含まない")+" · "+(grain==="pref"?"都道府県別原票":"二次医療圏別原票");for(const m of Object.keys(fields)){const x=el("article","","profile-kpi");const put=(r,label)=>{const v=r.metrics[m];x.append(el("span",label),el("strong",short(v.amount)),el("p","本体 "+short(v.main.amount)+" ／ 専用加算 "+short(v.addon.amount)),el("p","人口1人当たり "+yen(v.perCapita)),el("p","全国平均比 "+idx(v.nationalIndex)+" ／ LQ "+idx(v.lq)),el("small","秘匿 "+num(v.main.suppressed+v.addon.suppressed)+" セル · 点数なし "+num(v.main.noPoints+v.addon.noPoints)+" セル"))};x.append(el("h3",fields[m]));put(a,a.name);if(b){x.append(el("hr"));put(b,b.name);x.append(el("p","差額 "+short(a.metrics[m].amount-b.metrics[m].amount)))}$("tech-cards").append(x)}modalityData=a;modalityCompare=b||null;renderModality()}catch(e){if(!c.signal.aborted&&connected&&g===connectionGeneration)$("tech-status").textContent=e.message}}
 async function loadRank(){if(!connected||initializing||compareLoading||location.hash!=="#compare")return;rankRequest?.abort();const c=rankRequest=new AbortController(),g=connectionGeneration;compareData=null;compareClearMap();$("rank-list").replaceChildren();$("rank-status").textContent="読み込み中…";try{const level=$("rank-level").value,pref=level==="prefecture"?"JP":$("rank-pref").value,basis=$("basis").value,category=$("metric").value,cl=$("rank-class").value||"ALL",code=$("rank-code").value||"ALL",scope=$("rank-scope").value;const r=await api("/v1/compare/ranking?"+new URLSearchParams({level,pref,scope,category,class:cl,code,basis}),c.signal);if(c.signal.aborted||g!==connectionGeneration||!connected)return;compareData=r;compareRender(r)}catch(e){if(!c.signal.aborted&&g===connectionGeneration)$("rank-status").textContent=e.message}}
 async function activate(g){initializing=true;const r=await api("/v1/prefectures");if(g!==connectionGeneration||!connected)return;if(!Array.isArray(r.prefectures)||r.prefectures.length!==47)throw Error("地域一覧エラー");for(const x of r.prefectures)for(const id of ["category-region","pref","compare-pref","rank-pref"])$(id).add(new Option(x.name,x.code));for(const id of controls)$(id).disabled=["category-area","area","compare-area","rank-pref"].includes(id);$("category-detail").hidden=false;initializing=false;await loadCategory();if(g!==connectionGeneration||!category)throw Error("初期集計エラー");if(location.hash==="#compare")await compareCatalog("ALL","ALL");if(!$("techBoard").hidden)await loadTech();procedureEnable(r.prefectures);$("guidebook-query").disabled=false;$("guidebook-search").disabled=false;specialEnable(r.prefectures);comparePrefs=r.prefectures;if(location.hash==="#procedure")procedureSearch();if(!$("specialBoard").hidden)specialLoad()}
-function init(){if(sessionStorage.getItem("atlas.region.selection.v1")){$("atlas-region-transition").classList.add("active");setTimeout(()=>{if(!connected&&!starting)connect()},150)}for(const id of ["v15Total","v15PerCap","v15Largest","v15Unknown","v15Ctx","v15Audit","v15Stack","v15Cats","v15LQ","v15Rows","tech-cards","tech-status","rank-list","rank-status"])placeholders.set(id,[...$(id).childNodes].map(n=>n.cloneNode(true)));$("connect-data").addEventListener("click",connect);$("disconnect-data").addEventListener("click",()=>disconnect("接続を解除しました。"));$("category-region").addEventListener("change",async()=>{if(!connected)return;catRequest?.abort();clearCategory();$("category-grain").disabled=$("category-region").value!=="JP";try{await fillArea("category-region","category-area");loadCategory()}catch(e){if(connected)$("v15Ctx").textContent=e.message}});for(const id of ["category-area","category-scope","category-grain"])$(id).addEventListener("change",loadCategory);$("category-sort").addEventListener("change",renderCategory);for(const [p,a] of [["pref","area"],["compare-pref","compare-area"]]){$(p).addEventListener("change",async()=>{if(!connected)return;techRequest?.abort();try{await fillArea(p,a);loadTech()}catch(e){if(connected)$("tech-status").textContent=e.message}});$(a).addEventListener("change",loadTech)}$("rank-level").addEventListener("change",()=>{$("rank-pref").disabled=!connected||$("rank-level").value==="prefecture";loadRank()});for(const id of ["rank-pref","basis","rank-scope"])$(id).addEventListener("change",loadRank);document.addEventListener("atlas-tech",loadTech);document.addEventListener("atlas-rank",loadRank);document.addEventListener("atlas-profile",()=>{if(!category&&connected)loadCategory()});initNav()}
+function init(){if(sessionStorage.getItem("atlas.region.selection.v1")){$("atlas-region-transition").classList.add("active");setTimeout(()=>{if(!redirectCallback&&!connected&&!starting)connect()},150)}for(const id of ["v15Total","v15PerCap","v15Largest","v15Unknown","v15Ctx","v15Audit","v15Stack","v15Cats","v15LQ","v15Rows","tech-cards","tech-status","rank-list","rank-status"])placeholders.set(id,[...$(id).childNodes].map(n=>n.cloneNode(true)));$("connect-data").addEventListener("click",connect);$("disconnect-data").addEventListener("click",()=>disconnect("接続を解除しました。"));$("category-region").addEventListener("change",async()=>{if(!connected)return;catRequest?.abort();clearCategory();$("category-grain").disabled=$("category-region").value!=="JP";try{await fillArea("category-region","category-area");loadCategory()}catch(e){if(connected)$("v15Ctx").textContent=e.message}});for(const id of ["category-area","category-scope","category-grain"])$(id).addEventListener("change",loadCategory);$("category-sort").addEventListener("change",renderCategory);for(const [p,a] of [["pref","area"],["compare-pref","compare-area"]]){$(p).addEventListener("change",async()=>{if(!connected)return;techRequest?.abort();try{await fillArea(p,a);loadTech()}catch(e){if(connected)$("tech-status").textContent=e.message}});$(a).addEventListener("change",loadTech)}$("rank-level").addEventListener("change",()=>{$("rank-pref").disabled=!connected||$("rank-level").value==="prefecture";loadRank()});for(const id of ["rank-pref","basis","rank-scope"])$(id).addEventListener("change",loadRank);document.addEventListener("atlas-tech",loadTech);document.addEventListener("atlas-rank",loadRank);document.addEventListener("atlas-profile",()=>{if(!category&&connected)loadCategory()});initNav()}
 document.addEventListener("DOMContentLoaded",init);
 let procCategory="ALL",procPage=0,procTotal=0,procSelected=null,procSearchRequest=null,procDetailRequest=null,procSearchVersion=0,procAreaVersion=0;
 const procControls=["procedure-query","procedure-search","procedure-all","procedure-pref","procedure-area","procedure-grain","procedure-scope","procedure-setting","procedure-addon"];
@@ -64,10 +64,30 @@ document.addEventListener("DOMContentLoaded",procedureInit);
 
 let specialBasis="excess",specialRequest=null,specialVersion=0;
 const specialControls=["special-pref","special-area","special-scope","special-category","special-min"];
+let specialAreaLoading=false,specialSelectionVersion=0,specialSubmittedKey=null;
+function regionSelection(){
+ const pref=$("special-pref").value,area=$("special-area").value,scope=$("special-scope").value;
+ if(!/^(0[1-9]|[1-3][0-9]|4[0-7])$/.test(pref)||specialAreaLoading||area&&(!/^\d{4}$/.test(area)||!area.startsWith(pref))||!["include","exclude"].includes(scope))return null;
+ const region=area||pref;return {region,scope,grain:area?"secondary":"pref"};
+}
+function regionSelectionKey(x){return x?x.region+":"+x.scope:null}
+function syncRegionSearchButton(){const b=$("region-profile-fetch");if(b)b.disabled=!connected||initializing||!regionSelection()}
+function invalidateRegionSelection(){
+ specialSubmittedKey=null;specialVersion++;specialRequest?.abort();specialRequest=null;regionDashboardController?.reset();
+ specialEmpty("地域を選択して「調べる」を押してください。");
+ $("special-status").textContent="検索待ち";syncRegionSearchButton();
+}
+async function runRegionAnalysis(){
+ const selected=regionSelection();if(!connected||initializing||!selected||!regionDashboardController){syncRegionSearchButton();return false}
+ specialSubmittedKey=regionSelectionKey(selected);
+ const results=await Promise.allSettled([regionDashboardController.load(selected),specialLoad()]);
+ return results[0].status==="fulfilled"&&results[0].value===true;
+}
+
 const specialLabels={excess:"超過参考換算額",lq:"地域特化指数",nationalIndex:"人口当たり全国平均比",amount:"参考換算額"};
 const specialMoney=v=>v==null?"—":Math.abs(v)>=1e8?(v/1e8).toLocaleString("ja-JP",{maximumFractionDigits:2})+" 億円":(v/1e4).toLocaleString("ja-JP",{maximumFractionDigits:1})+" 万円";
 function specialEmpty(msg){$("special-rows").replaceChildren();const r=el("tr"),td=el("td",msg,"atlas-special-empty");td.colSpan=8;r.append(td);$("special-rows").append(r);for(const id of ["special-total","special-eligible","special-top","special-value"])$(id).textContent="—"}
-function specialReset(){specialVersion++;specialRequest?.abort();specialRequest=null;for(const id of specialControls)$(id).disabled=true;for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=true;$("special-pref").replaceChildren(new Option("都道府県を選択",""));$("special-area").replaceChildren(new Option("都道府県全体",""));$("special-context").textContent="「データ接続」後に地域を選択してください。";$("special-status").textContent="データ未接続";specialEmpty("認証接続後にランキングを表示します。")}
+function specialReset(){specialSelectionVersion++;specialAreaLoading=false;specialSubmittedKey=null;specialVersion++;specialRequest?.abort();specialRequest=null;for(const id of specialControls)$(id).disabled=true;for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=true;$("special-pref").replaceChildren(new Option("都道府県を選択",""));$("special-area").replaceChildren(new Option("都道府県全体",""));$("special-context").textContent="「データ接続」後に地域を選択してください。";$("special-status").textContent="データ未接続";specialEmpty("認証接続後にランキングを表示します。");syncRegionSearchButton()}
 async function applyRegionalDeepLink(){
  const key="atlas.region.selection.v1",raw=sessionStorage.getItem(key);if(!raw||!connected)return;
  try{
@@ -75,18 +95,29 @@ async function applyRegionalDeepLink(){
   if(!/^(0[1-9]|[1-3][0-9]|4[0-7])$/.test(x.pref)||!Number.isFinite(x.at)||Date.now()-x.at>1800000)throw Error("地域選択の有効期限が切れました");
   setView("profile");setSub("special");
   $("special-pref").value=x.pref;
-  await fillArea("special-pref","special-area");
+  specialAreaLoading=true;syncRegionSearchButton();try{await fillArea("special-pref","special-area")}finally{specialAreaLoading=false;syncRegionSearchButton()}
+  if(!connected||$("special-pref").value!==x.pref)throw Error("地域選択が中断されました");
+  if(["include","exclude"].includes(x.scope))$("special-scope").value=x.scope;
   if(x.area){if(![...$("special-area").options].some(o=>o.value===x.area))throw Error("指定した二次医療圏が見つかりません");$("special-area").value=x.area;}
-  await specialLoad();
+  await runRegionAnalysis();
  }catch(e){$("special-status").textContent="地域データ取得エラー："+e.message;status(e.message)}
  finally{sessionStorage.removeItem(key);$("atlas-region-transition").classList.remove("active")}
 }
-function specialEnable(prefs){$("special-pref").replaceChildren(new Option("都道府県を選択",""));for(const p of prefs)$("special-pref").add(new Option(p.name,p.code));for(const id of specialControls)$(id).disabled=id==="special-area";for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=false;$("special-context").textContent="都道府県を選択してください。";$("special-status").textContent="地域選択待ち"}
+function specialEnable(prefs){$("special-pref").replaceChildren(new Option("都道府県を選択",""));for(const p of prefs)$("special-pref").add(new Option(p.name,p.code));for(const id of specialControls)$(id).disabled=id==="special-area";for(const b of document.querySelectorAll("[data-special-mode]"))b.disabled=false;$("special-context").textContent="都道府県を選択してください。";$("special-status").textContent="地域選択待ち";syncRegionSearchButton()}
 function specialValue(v,b){return b==="lq"?idx(v)+" 倍":b==="nationalIndex"?idx(v):specialMoney(v)}
 async function specialOpenCode(x,d){if(!connected)return;const g=connectionGeneration;procDetailRequest?.abort();procSearchRequest?.abort();procSelected=x.code;procCategory="ALL";procPage=0;$("procedure-query").value=x.code;for(const b of document.querySelectorAll("[data-proc-cat]"))b.setAttribute("aria-pressed","false");$("procedure-filter").textContent="A〜O 全区分";$("procedure-pref").value=d.region.slice(0,2);$("procedure-scope").value=d.scope;$("procedure-setting").value="all";$("procedure-addon").value="all";$("procedure-grain").disabled=true;$("procedure-body").hidden=true;$("procedure-empty").hidden=false;setView("procedure");try{await fillArea("procedure-pref","procedure-area");if(!connected||g!==connectionGeneration||procSelected!==x.code)return;$("procedure-area").value=d.grain==="secondary"?d.region:"";await Promise.all([procedureSearch(),procedureDetail()])}catch(e){if(connected)$("procedure-detail-status").textContent=e.message}}
 function specialRender(d){$("special-context").textContent=d.regionName+" · "+num(d.population)+" 人 · "+(d.grain==="pref"?"都道府県別原票":"二次医療圏別原票")+" · 公費"+(d.scope==="include"?"含む":"含まない");$("special-total").textContent=specialMoney(d.regionalTotal);$("special-eligible").textContent=num(d.eligible)+" 件";$("special-top").textContent=d.rows[0]?.name||"—";$("special-value").textContent=d.rows.length?specialValue(d.rows[0][d.basis],d.basis):"—";$("special-status").textContent=specialLabels[d.basis]+"順 · "+num(d.eligible)+" 件中 "+d.rows.length+" 件 · 全区分地域総額と全国原票を基準";$("special-rows").replaceChildren();for(const x of d.rows){const tr=el("tr"),td=el("td","","atlas-special-name"),b=el("button",x.name,"atlas-special-code");b.type="button";b.addEventListener("click",()=>specialOpenCode(x,d));td.append(b,el("small",x.code+" · "+(x.classCode||"分類番号未照合")+" · "+x.category.replace("_"," ")));tr.append(el("td",x.rank),td,el("td",specialMoney(x.amount),"right"),el("td",specialMoney(x.excess),"right "+(x.excess>0?"atlas-special-positive":"atlas-special-negative")),el("td",idx(x.lq)+" 倍","right"),el("td",idx(x.nationalIndex),"right"),el("td",pct(x.share),"right"));const notes=[];if(x.suppressed)notes.push("地域秘匿 "+x.suppressed);if(x.noPoints)notes.push("地域点数なし "+x.noPoints);if(x.missing)notes.push("地域欠測 "+x.missing);if(x.nationalSuppressed)notes.push("全国秘匿あり");if(x.nationalNoPoints)notes.push("全国点数なしあり");tr.append(el("td",notes.join(" / ")||"公開値","atlas-special-note"));$("special-rows").append(tr)}if(!d.rows.length){const tr=el("tr"),td=el("td","条件を満たす診療行為はありません。最低金額や区分を変更してください。","atlas-special-empty");td.colSpan=8;tr.append(td);$("special-rows").append(tr)}}
-async function specialLoad(){if(!connected||initializing||$("specialBoard").hidden)return;specialRequest?.abort();const pref=$("special-pref").value;if(!pref){specialEmpty("都道府県を選択してください。");return}const c=specialRequest=new AbortController(),v=++specialVersion,g=connectionGeneration,region=$("special-area").value||pref,grain=region.length===2?"pref":"secondary";specialEmpty("ランキングを計算中…");$("special-status").textContent="全コードから計算中…";try{const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:$("special-scope").value,grain,basis:specialBasis,category:$("special-category").value,min:$("special-min").value}),c.signal);if(!c.signal.aborted&&connected&&v===specialVersion&&g===connectionGeneration)specialRender(d)}catch(e){if(!c.signal.aborted&&connected&&v===specialVersion){specialEmpty("ランキング取得に失敗しました。");$("special-status").textContent=e.message}}}
-function specialInit(){$("special-pref").addEventListener("change",async()=>{specialRequest?.abort();const v=++specialVersion;try{await fillArea("special-pref","special-area");if(connected&&v===specialVersion)specialLoad()}catch(e){if(connected&&v===specialVersion)$("special-status").textContent=e.message}});for(const id of specialControls.slice(1))$(id).addEventListener("change",specialLoad);for(const b of document.querySelectorAll("[data-special-mode]"))b.addEventListener("click",()=>{specialBasis=b.dataset.specialMode;for(const x of document.querySelectorAll("[data-special-mode]")){x.classList.toggle("on",x===b);x.setAttribute("aria-pressed",String(x===b))}specialLoad()});document.addEventListener("atlas-special",specialLoad);document.addEventListener("atlas-profile",()=>{if(!$("specialBoard").hidden)specialLoad()})}
+async function specialLoad(){if(!connected||initializing||$("specialBoard").hidden||!specialSubmittedKey||specialSubmittedKey!==regionSelectionKey(regionSelection()))return;specialRequest?.abort();const pref=$("special-pref").value;if(!pref){specialEmpty("都道府県を選択してください。");return}const c=specialRequest=new AbortController(),v=++specialVersion,g=connectionGeneration,region=$("special-area").value||pref,grain=region.length===2?"pref":"secondary";specialEmpty("ランキングを計算中…");$("special-status").textContent="全コードから計算中…";try{const d=await api("/v1/specialization?"+new URLSearchParams({region,scope:$("special-scope").value,grain,basis:specialBasis,category:$("special-category").value,min:$("special-min").value}),c.signal);if(!c.signal.aborted&&connected&&v===specialVersion&&g===connectionGeneration)specialRender(d)}catch(e){if(!c.signal.aborted&&connected&&v===specialVersion){specialEmpty("ランキング取得に失敗しました。");$("special-status").textContent=e.message}}}
+function specialInit(){
+ $("special-pref").addEventListener("change",async()=>{
+  const v=++specialSelectionVersion;specialAreaLoading=true;invalidateRegionSelection();
+  try{await fillArea("special-pref","special-area")}catch(e){if(connected&&v===specialSelectionVersion)$("special-status").textContent=e.message}
+  finally{if(v===specialSelectionVersion){specialAreaLoading=false;syncRegionSearchButton()}}
+ });
+ for(const id of ["special-area","special-scope"])$(id).addEventListener("change",invalidateRegionSelection);
+ for(const id of ["special-category","special-min"])$(id).addEventListener("change",specialLoad);
+ for(const b of document.querySelectorAll("[data-special-mode]"))b.addEventListener("click",()=>{specialBasis=b.dataset.specialMode;for(const x of document.querySelectorAll("[data-special-mode]")){x.classList.toggle("on",x===b);x.setAttribute("aria-pressed",String(x===b))}specialLoad()});
+}
 document.addEventListener("DOMContentLoaded",specialInit);
 
 let modalityData=null,modalityCompare=null,activeModality="CT",activeModGroup=null;
@@ -228,13 +259,13 @@ function renderRegionDashboard(root,data,onCode){
  kpi("人口補正で平均を上回る割合",ratio(popAbove,nPop),fmt(popAbove)+" / "+fmt(nPop)+" コード");
  kpi("全国上位10%相当",ratio(v.distributions.raw[0],nRaw),fmt(v.distributions.raw[0])+" コード（算定回数）");
  kpi("人口補正で全国上位10%相当",ratio(v.distributions.population[0],nPop),fmt(v.distributions.population[0])+" コード");
- intro.append(kpis);
+ intro.id="region-summary";intro.append(kpis);
  note(intro,"比較対象：最大 "+fmt(data.areaCount)+" 地域。各割合の分母は比較可能なコード数であり、算定件数全体の割合ではありません。");
  note(intro,"全国平均＝100。100より大きいほど平均より多く、100より小さいほど少ない。非公表・欠測値は除外するため、比較対象地域数はコードごとに異なります。");
  for(const [key,title] of Object.entries({rawHigh:"算定回数｜全国平均より多い TOP30",rawLow:"算定回数｜全国平均より少ない TOP30",populationHigh:"人口1万人当たり｜全国平均より多い TOP30",populationLow:"人口1万人当たり｜全国平均より少ない TOP30"})){
   const rows=data.top[key]||[],high=key.endsWith("High"),pop=key.startsWith("population");
   const p=panel(title,(pop?"人口1万人当たりの算定回数":"算定回数")+"の全国平均比。"+(high?"平均を超えるコードを指数の大きい順":"平均未満のコードを指数の小さい順")+"に表示。");
-  if(!rows.length){note(p,"該当する比較可能なコードがありません。");continue}
+  if(key==="rawHigh")p.id="region-count-rank";if(!rows.length){note(p,"該当する比較可能なコードがありません。");continue}
   const max=high?Math.max(100,...rows.map(r=>r.index)):100;
   const head=el("div",undefined,"display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:12px;font-size:12px;font-weight:700;color:#506a7b;margin-bottom:8px");head.append(el("span","診療報酬名・全国順位"),el("span","全国平均比"));p.append(head);
   const list=el("div",undefined,"display:grid;gap:12px");
@@ -253,7 +284,7 @@ function renderRegionDashboard(root,data,onCode){
  for(const b of ["raw","population"]){
   const bins=v.distributions[b],total=sum(bins),kind=b==="raw"?"算定回数":"人口1万人当たり";
   const p=panel(kind+"｜全国順位の分布","横軸：比較可能な地域の中での順位を10区分。縦軸：その順位帯に入る診療報酬コード数。左ほど全国で上位。",true);
-  if(!total){note(p,"比較可能なコードがありません。");continue}
+  if(b==="raw")p.id="region-rank-distribution";if(!total){note(p,"比較可能なコードがありません。");continue}
   const w=880,h=360,c=chart(p,w,h,kind+"の全国順位帯別コード数"),left=86,right=850,top=35,bottom=282,step=(right-left)/10,rawMax=Math.max(...bins,1);
   const unit=Math.pow(10,Math.floor(Math.log10(rawMax/4))),tick=Math.max(1,Math.ceil(rawMax/4/unit)*unit),max=tick*4;
   const y=n=>bottom-n/max*(bottom-top);
@@ -264,7 +295,7 @@ function renderRegionDashboard(root,data,onCode){
   note(p,"全国上位10%相当： "+fmt(bins[0])+" 件（"+ratio(bins[0],total)+"）／ 比較可能な全 "+fmt(total)+" 件。相対順位は（順位−1）÷（比較対象地域数−1）で算出。同順位があるため各帯の件数は均等になりません。");
  }
  const p=panel("算定回数と人口補正｜地域特性の比較","1点＝1診療報酬コード。横軸は算定回数指数、縦軸は人口1万人当たり指数。両方とも全国平均100。",true);
- const points=v.scatter||[];
+ p.id="region-scatter";const points=v.scatter||[];
  if(points.length){
   const c=chart(p,880,510,"算定回数指数と人口補正指数の散布図"),left=95,right=840,top=40,bottom=435,scale=n=>Math.log1p(Math.max(0,n)),max=Math.max(scale(100),...points.flatMap(r=>[scale(r.raw),scale(r.population)])),x=n=>left+scale(n)/max*(right-left),y=n=>bottom-scale(n)/max*(bottom-top);
   const ticks=[0,1,10,100,1000,10000,100000,1000000].filter(n=>scale(n)<=max);
@@ -283,7 +314,7 @@ function renderRegionDashboard(root,data,onCode){
 function createRegionCodeSearch({root,api,context,onCode,signal}){
  const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
  const fmt=n=>n==null?"—":Number(n).toLocaleString("ja-JP",{maximumFractionDigits:2});
- const section=el("section",undefined,"grid-column:1/-1;min-width:0;padding:20px;border:1px solid #dce6eb;border-radius:12px;background:white");
+ const section=el("section",undefined,"grid-column:1/-1;min-width:0;padding:20px;border:1px solid #dce6eb;border-radius:12px;background:white");section.id="region-code-search";
  section.append(el("h3","地域別診療報酬検索","font-size:19px;color:#183b50;margin:0 0 8px"),el("p","TOP30以外も検索できます。診療報酬名・区分・9桁コードを指定し、全国平均比・全国順位を確認してください。空欄で全比較可能コードを表示します。","font-size:13px;color:#506a7b;line-height:1.7"));
  const form=el("form",undefined,"display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;align-items:end");
  const field=(name,control)=>{const l=el("label",undefined,"display:grid;gap:5px;color:#405f70;font-size:13px;font-weight:700");l.append(el("span",name),control);form.append(l)};
@@ -481,7 +512,7 @@ function createRegionPeerComparison({parent,baseData,context,api,signal,palette}
  const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
  const fmt=(n,d=2)=>Number(n).toLocaleString("ja-JP",{maximumFractionDigits:d});
  const panel=el("section",undefined,"margin-top:24px;padding-top:20px;border-top:1px solid #dce6eb;min-width:0");
- panel.append(el("h3","地域間比較｜診療報酬区分別ヒートマップ","font-size:20px;color:#183b50;margin:0 0 8px"),el("p","選択地域を基準に最大3地域を追加できます。同じ地理単位・公費条件・2024年度の参考換算額を使用します。","font-size:14px;color:#506a7b;line-height:1.7"));
+ panel.id="region-peer-compare";panel.append(el("h3","地域間比較｜診療報酬区分別ヒートマップ","font-size:20px;color:#183b50;margin:0 0 8px"),el("p","選択地域を基準に最大3地域を追加できます。同じ地理単位・公費条件・2024年度の参考換算額を使用します。","font-size:14px;color:#506a7b;line-height:1.7"));
  const style="box-sizing:border-box;width:100%;padding:10px;border:1px solid #ccdbe3;border-radius:6px;background:#fff;color:#183b50;font-size:14px";
  const form=el("form",undefined,"display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;align-items:end");
  const field=(name,node)=>{const l=el("label",undefined,"display:grid;gap:6px;font-size:13px;color:#405f70;font-weight:700");l.append(el("span",name),node);form.append(l)};
@@ -584,24 +615,26 @@ function createRegionDashboardController({root,status,api,onCode}){
   reset();const v=version,c=request=new AbortController();status.textContent="地域プロファイルを取得中…";
   try{
    const d=await api("/v1/region-profile?"+new URLSearchParams({region,scope,grain,mode:"highlights"}),c.signal);
-   if(c.signal.aborted||v!==version)return;
+   if(c.signal.aborted||v!==version)return false;
    if(d.region!==region||d.scope!==scope||!d.visuals||!d.top)throw Error("地域データの応答が一致しません");
    const openCode=code=>onCode({code},{...d,grain});
    renderRegionDashboard(root,d,openCode);
    const search=createRegionCodeSearch({root,api,context:{region,scope,grain},onCode:openCode,signal:c.signal});
    root.insertBefore(search.section,root.children[1]||null);
-   const composition=document.createElement("section");composition.className="region-chart";composition.style.cssText="grid-column:1/-1;min-width:0;padding:20px;border:1px solid #dce6eb;border-radius:12px;background:#fff";composition.textContent="診療報酬構成を取得中…";
+   const composition=document.createElement("section");composition.className="region-chart";composition.id="region-composition";composition.style.cssText="grid-column:1/-1;min-width:0;padding:20px;border:1px solid #dce6eb;border-radius:12px;background:#fff";composition.textContent="診療報酬構成を取得中…";
    root.insertBefore(composition,root.children[2]||null);
    // Independent request: failure never removes the already loaded count analysis.
-   api("/v1/categories/"+encodeURIComponent(region)+"?"+new URLSearchParams({scope,grain}),c.signal).then(category=>{
+   const compositionTask=api("/v1/categories/"+encodeURIComponent(region)+"?"+new URLSearchParams({scope,grain}),c.signal).then(category=>{
     if(c.signal.aborted||v!==version)return;
     if(category.scope!==scope||category.grain!==grain||(category.region!=null&&String(category.region)!==region))throw Error("地域または集計条件が一致しません");
     renderRegionComposition(composition,category,CATEGORY_PALETTE);
     createRegionPeerComparison({parent:composition,baseData:category,context:{region,scope,grain},api,signal:c.signal,palette:CATEGORY_PALETTE});
    }).catch(e=>{if(!c.signal.aborted&&v===version)composition.textContent="参考換算額構成の取得エラー："+e.message});
 
+   const nav=document.createElement("nav");nav.setAttribute("aria-label","地域分析内の移動");nav.style.cssText="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:#f1f6f7;border-radius:8px";for(const [id,label] of [["region-summary","概要"],["region-code-search","診療報酬検索"],["region-composition","診療構成・LQ"],["region-peer-compare","地域間比較"],["region-count-rank","TOP30"],["region-rank-distribution","順位分布"],["region-scatter","散布図"],["special-status","参考換算額TOP100"]]){const b=document.createElement("button");b.type="button";b.textContent=label;b.style.cssText="padding:8px 12px;background:white;border:1px solid #ccdbe3;border-radius:6px;font-size:13px;color:#183b50;cursor:pointer";b.addEventListener("click",()=>{const target=$(id);if(target)target.scrollIntoView({behavior:"smooth",block:"start"});else status.textContent="対象の分析は読み込み中か未取得です。"});nav.append(b)}root.insertBefore(nav,root.children[0]||null);
    status.textContent=d.regionName+"｜比較可能 "+d.visuals.comparableCodes.toLocaleString("ja-JP")+" コード";
-  }catch(e){if(!c.signal.aborted&&v===version){root.replaceChildren();status.textContent="地域プロファイル取得エラー："+e.message}}
+   await compositionTask;return !c.signal.aborted&&v===version;
+  }catch(e){if(!c.signal.aborted&&v===version){root.replaceChildren();status.textContent="地域プロファイル取得エラー："+e.message}return false}
  }
  return {load,reset};
 }
@@ -611,14 +644,13 @@ function initRegionDashboard(){
  const board=$("specialBoard"),anchor=$("special-status")?.closest(".special-board");
  if(!board||!anchor)return;
  const section=document.createElement("section");section.className="profile-panel";
- const heading=document.createElement("h3");heading.textContent="地域診療ダッシュボード（接続検証版）";
- const status=document.createElement("p");status.setAttribute("role","status");status.textContent="データ未取得";
- const button=document.createElement("button");button.type="button";button.id="region-profile-fetch";button.className="atlas-connect-secondary";button.textContent="算定回数・人口補正グラフを取得";button.style.cssText="display:inline-block;padding:12px 18px;margin:8px 0 16px;background:#117d81;color:#fff;border:0;border-radius:8px;font-weight:700;cursor:pointer";
+ const heading=document.createElement("h3");heading.textContent="地域診療ダッシュボード";heading.style.cssText="font-size:20px;color:#183b50;margin:0 0 8px";section.id="region-dashboard";
+ const status=document.createElement("p");status.setAttribute("role","status");status.textContent="地域を選択して「調べる」を押してください。";status.style.cssText="font-size:14px;color:#506a7b;line-height:1.7";status.setAttribute("aria-live","polite");
+ const button=document.createElement("button");button.type="button";button.id="region-profile-fetch";button.className="atlas-connect-secondary";button.textContent="調べる";button.disabled=true;button.style.cssText="display:inline-block;padding:12px 18px;margin:8px 0 16px;background:#117d81;color:#fff;border:0;border-radius:8px;font-weight:700;cursor:pointer";
  const root=document.createElement("div");root.className="region-dashboard-grid";root.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,610px),1fr));gap:20px;align-items:start";
- section.append(heading,status,button,root);anchor.before(section);
+ section.append(heading,status,root);anchor.before(section);$("special-search-actions").append(button);
  regionDashboardController=createRegionDashboardController({root,status,api,onCode:specialOpenCode});
- button.addEventListener("click",()=>{if(!connected){status.textContent="データ接続が必要です";return}const pref=$("special-pref").value,region=$("special-area").value||pref;if(!region){status.textContent="地域を選択してください";return}regionDashboardController.load({region,scope:$("special-scope").value,grain:region.length===2?"pref":"secondary"})});
- for(const id of ["special-pref","special-area","special-scope"])$(id).addEventListener("change",()=>regionDashboardController.reset());
+ button.addEventListener("click",runRegionAnalysis);syncRegionSearchButton();
 }
 // Show the explicitly labeled test panel in the normal regional tab. Only the new API uses the preview gateway; existing API paths stay on production.
 document.addEventListener("DOMContentLoaded",()=>{
