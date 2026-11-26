@@ -11,32 +11,67 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: "github-pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
+    name: Validate and upload public UI
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: read
     steps:
       - name: Checkout only public code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Validate public release contents
         run: python3 scripts/check_public.py
       - name: Syntax-check public JS
         run: node --check docs/assets/app.js
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Upload only the docs site
-        uses: actions/upload-pages-artifact@v3
+      - name: Package only validated docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --dereference --hard-dereference --directory=docs -cf "$RUNNER_TEMP/artifact.tar" .
+          test -s "$RUNNER_TEMP/artifact.tar"
+          tar -tf "$RUNNER_TEMP/artifact.tar"
+      - name: Upload github-pages artifact
+        id: upload
+        uses: actions/upload-artifact@v4
         with:
-          path: docs
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          if-no-files-found: error
+          retention-days: 1
+      - name: Confirm artifact upload
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          echo "Pages artifact ID: $ARTIFACT_ID"
+
+  deploy:
+    name: Deploy validated public UI
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Deploy public website
         id: deploy
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages
