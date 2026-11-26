@@ -207,24 +207,68 @@ document.addEventListener("DOMContentLoaded",gbInit);
 
 // Rendering module: accepts authenticated aggregate response only.
 function renderRegionDashboard(root,data,onCode){
- const ns="http://www.w3.org/2000/svg",v=data.visuals;
+ const ns="http://www.w3.org/2000/svg",v=data.visuals,fmt=n=>Number(n).toLocaleString("ja-JP",{maximumFractionDigits:1}),sum=a=>a.reduce((x,y)=>x+y,0),ratio=(n,d)=>d?fmt(n/d*100)+"%":"—";
  root.replaceChildren();
- const el=(tag,t)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;return x};
+ const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
  const svg=(tag,attrs)=>{const x=document.createElementNS(ns,tag);for(const [k,val] of Object.entries(attrs))x.setAttribute(k,String(val));return x};
- const panel=(title,w,h)=>{const section=el("section");section.className="region-chart";section.append(el("h3",title));const chart=svg("svg",{viewBox:"0 0 "+w+" "+h,width:"100%",role:"img","aria-label":title});section.append(chart);root.append(section);return chart};
- const label=(chart,x,y,t,anchor="start")=>{const a=svg("text",{x,y,"font-size":11,fill:"currentColor","text-anchor":anchor});a.textContent=t;chart.append(a)};
- const mark=(chart,node,r)=>{const t=svg("title",{});t.textContent=r.name+" / "+r.code;node.append(t);if(onCode){node.setAttribute("tabindex","0");node.setAttribute("role","button");node.addEventListener("click",()=>onCode(r.code));node.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onCode(r.code)}})}chart.append(node)};
- for(const [key,title] of Object.entries({rawHigh:"算定回数・上位",rawLow:"算定回数・下位",populationHigh:"人口補正・上位",populationLow:"人口補正・下位"})){
- const rows=(data.top[key]||[]).slice(0,10),c=panel(title,640,Math.max(80,rows.length*27+35)),max=Math.max(100,...rows.map(r=>r.index));const x=n=>260+n/max*310;
- c.append(svg("line",{x1:x(100),x2:x(100),y1:8,y2:rows.length*27+8,stroke:"currentColor","stroke-dasharray":"3 3",opacity:.5}));
- rows.forEach((r,i)=>{const y=12+i*27;label(c,4,y+12,r.name.length>19?r.name.slice(0,19)+"…":r.name);mark(c,svg("rect",{x:Math.min(x(100),x(r.index)),y,width:Math.max(1,Math.abs(x(r.index)-x(100))),height:15,rx:2,fill:r.index>=100?"#168e86":"#6588b8"}),r);label(c,635,y+12,r.index.toFixed(1),"end")});label(c,x(100),rows.length*27+24,"100","middle");
+ const panel=(title,desc,full=false)=>{const p=el("section",undefined,"min-width:0;padding:20px;border:1px solid #dce6eb;border-radius:12px;background:#fff;overflow:hidden;"+(full?"grid-column:1/-1;":""));p.className="region-chart";p.append(el("h3",title,"font-size:19px;line-height:1.4;margin:0 0 8px;color:#183b50"),el("p",desc,"font-size:13px;line-height:1.7;color:#506a7b;margin:0 0 16px"));root.append(p);return p};
+ const chart=(p,w,h,title)=>{const c=svg("svg",{viewBox:"0 0 "+w+" "+h,role:"img","aria-label":title});c.style.cssText="display:block;width:100%;height:auto;max-width:100%;overflow:visible;color:#29495b";p.append(c);return c};
+ const label=(c,x,y,t,anchor="start",size=14)=>{const a=svg("text",{x,y,"text-anchor":anchor});a.style.cssText="font-family:system-ui,sans-serif;font-size:"+size+"px;fill:#29495b;stroke:none";a.textContent=t;c.append(a)};
+ const line=(c,x1,y1,x2,y2,dash=false)=>c.append(svg("line",{x1,y1,x2,y2,stroke:dash?"#587481":"#dce5eb","stroke-width":dash?1.6:1,...(dash?{"stroke-dasharray":"5 4"}:{})}));
+ const note=(p,t)=>p.append(el("p",t,"font-size:13px;color:#405f70;line-height:1.7;margin:14px 0 0"));
+ const button=(name,code)=>{const b=el("button",name,"font:inherit;color:#126f76;background:transparent;border:0;padding:0;text-align:left;cursor:pointer;text-decoration:underline;overflow-wrap:anywhere");b.type="button";if(onCode)b.addEventListener("click",()=>onCode(code));return b};
+ const nRaw=sum(v.distributions.raw),nPop=sum(v.distributions.population);
+ const intro=panel(data.regionName+"｜地域の診療特性","全国の比較可能な地域を基準に、診療報酬コードごとの算定回数と人口1万人当たりの算定回数を比較します。",true);
+ note(intro,"比較対象：最大 "+fmt(data.areaCount)+" 地域 ／ 算定回数 "+fmt(nRaw)+" コード ／ 人口補正 "+fmt(nPop)+" コード");
+ note(intro,"全国平均＝100。100より大きいほど平均より多く、100より小さいほど少ない。非公表・欠測値は除外するため、比較対象地域数はコードごとに異なります。");
+ for(const [key,title] of Object.entries({rawHigh:"算定回数｜全国平均より多い TOP30",rawLow:"算定回数｜全国平均より少ない TOP30",populationHigh:"人口1万人当たり｜全国平均より多い TOP30",populationLow:"人口1万人当たり｜全国平均より少ない TOP30"})){
+  const rows=data.top[key]||[],high=key.endsWith("High"),pop=key.startsWith("population");
+  const p=panel(title,(pop?"人口1万人当たりの算定回数":"算定回数")+"の全国平均比。"+(high?"平均を超えるコードを指数の大きい順":"平均未満のコードを指数の小さい順")+"に表示。");
+  if(!rows.length){note(p,"該当する比較可能なコードがありません。");continue}
+  const max=high?Math.max(100,...rows.map(r=>r.index)):100;
+  const head=el("div",undefined,"display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:12px;font-size:12px;font-weight:700;color:#506a7b;margin-bottom:8px");head.append(el("span","診療報酬名・全国順位"),el("span","全国平均比"));p.append(head);
+  const list=el("div",undefined,"display:grid;gap:12px");
+  const row=(r,i)=>{const item=el("div",undefined,"border-bottom:1px solid #e8eef2;padding-bottom:10px;min-width:0");
+   const top=el("div",undefined,"display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:12px;align-items:start;font-size:14px;line-height:1.5");
+   const name=el("div");name.append(button((i+1)+". "+r.name,r.code),el("div",r.code+" ｜ 全国 "+fmt(r.rank)+"位 / "+fmt(r.comparable??r.eligible)+"地域","font-size:12px;color:#627b8a;margin-top:4px"));
+   top.append(name,el("strong",fmt(r.index),"font-size:17px;text-align:right;color:"+(high?"#087e75":"#466da6")));item.append(top);
+   const track=el("div",undefined,"height:12px;background:#edf2f5;border-radius:3px;margin-top:7px;position:relative;overflow:hidden");
+   const x=Math.min(100,r.index/max*100),base=100/max*100;
+   const bar=el("span",undefined,"position:absolute;top:0;bottom:0;left:"+Math.min(x,base)+"%;width:"+Math.abs(x-base)+"%;background:"+(high?"#168e86":"#6588b8"));
+   const marker=el("span",undefined,"position:absolute;top:0;bottom:0;left:calc("+base+"% - 1px);width:2px;background:#314e60");track.append(bar,marker);item.append(track);
+   return item};
+  rows.slice(0,10).forEach((r,i)=>list.append(row(r,i)));p.append(list);note(p,"濃い縦線＝全国平均100。色付きの幅＝平均からの差。各グラフの横軸範囲：0〜"+fmt(max)+"。");
+  if(rows.length>10){const detail=el("details",undefined,"margin-top:14px");detail.append(el("summary","11〜"+rows.length+"位を表示","font-size:14px;color:#126f76;cursor:pointer;font-weight:700"));const more=el("div",undefined,"display:grid;gap:12px;margin-top:14px");rows.slice(10).forEach((r,i)=>more.append(row(r,i+10)));detail.append(more);p.append(detail)}
  }
- for(const b of ["raw","population"]){const bins=v.distributions[b],c=panel((b==="raw"?"算定回数":"人口補正")+"・全国順位分布",640,180),max=Math.max(1,...bins);bins.forEach((n,i)=>{const h=n/max*130;c.append(svg("rect",{x:35+i*58,y:145-h,width:45,height:h,fill:"#168e86",rx:2}));label(c,57+i*58,140-h,String(n),"middle")});label(c,35,165,"上位");label(c,615,165,"下位","end")}
- const c=panel("算定回数指数 × 人口補正指数（抽出表示）",640,330),scale=n=>Math.log1p(Math.max(0,n)),max=Math.max(scale(100),...v.scatter.flatMap(r=>[scale(r.raw),scale(r.population)])),x=n=>45+scale(n)/max*570,y=n=>280-scale(n)/max*250;
- c.append(svg("path",{d:"M45 30V280H615",stroke:"currentColor",fill:"none",opacity:.5}));c.append(svg("path",{d:"M"+x(100)+" 30V280 M45 "+y(100)+"H615",stroke:"currentColor","stroke-dasharray":"3 3",opacity:.5}));for(const r of v.scatter)mark(c,svg("circle",{cx:x(r.raw),cy:y(r.population),r:3,fill:"#168e86",opacity:.65}),r);label(c,330,310,"算定回数指数（対数軸）","middle");label(c,48,18,"人口補正指数（対数軸）");label(c,x(100),295,"100","middle");label(c,40,y(100),"100","end");
- const table=el("table"),head=el("tr");for(const t of ["区分","比較可能コード","算定回数指数100超","人口補正指数100超"])head.append(el("th",t));table.append(head);for(const r of v.categories){const tr=el("tr");for(const t of [r.category,r.codes,r.aboveRaw,r.abovePopulation+" / "+r.populationComparable])tr.append(el("td",String(t)));table.append(tr)}root.append(table);
+ for(const b of ["raw","population"]){
+  const bins=v.distributions[b],total=sum(bins),kind=b==="raw"?"算定回数":"人口1万人当たり";
+  const p=panel(kind+"｜全国順位の分布","横軸：比較可能な地域の中での順位を10区分。縦軸：その順位帯に入る診療報酬コード数。左ほど全国で上位。",true);
+  if(!total){note(p,"比較可能なコードがありません。");continue}
+  const w=880,h=360,c=chart(p,w,h,kind+"の全国順位帯別コード数"),left=86,right=850,top=35,bottom=282,step=(right-left)/10,rawMax=Math.max(...bins,1);
+  const unit=Math.pow(10,Math.floor(Math.log10(rawMax/4))),tick=Math.max(1,Math.ceil(rawMax/4/unit)*unit),max=tick*4;
+  const y=n=>bottom-n/max*(bottom-top);
+  for(let j=0;j<=4;j++){const n=j*tick;line(c,left,y(n),right,y(n));label(c,left-10,y(n)+5,fmt(n),"end",14)}
+  label(c,left,18,"コード数（件）","start",15);
+  bins.forEach((n,i)=>{const x=left+i*step+9,bh=bottom-y(n);c.append(svg("rect",{x,y:y(n),width:step-18,height:bh,fill:i===0?"#117d81":"#559f9d",rx:3}));label(c,x+(step-18)/2,y(n)-7,fmt(n),"middle",14);label(c,x+(step-18)/2,bottom+22,(i*10)+"–"+((i+1)*10)+"%","middle",12)});
+  label(c,left,bottom+46,"全国上位","start",14);label(c,right,bottom+46,"全国下位","end",14);label(c,(left+right)/2,bottom+67,"全国順位の相対位置（%）","middle",15);
+  note(p,"全国上位10%相当： "+fmt(bins[0])+" 件（"+ratio(bins[0],total)+"）／ 比較可能な全 "+fmt(total)+" 件。相対順位は（順位−1）÷（比較対象地域数−1）で算出。同順位があるため各帯の件数は均等になりません。");
+ }
+ const p=panel("算定回数と人口補正｜地域特性の比較","1点＝1診療報酬コード。横軸は算定回数指数、縦軸は人口1万人当たり指数。両方とも全国平均100。",true);
+ const points=v.scatter||[];
+ if(points.length){
+  const c=chart(p,880,510,"算定回数指数と人口補正指数の散布図"),left=95,right=840,top=40,bottom=435,scale=n=>Math.log1p(Math.max(0,n)),max=Math.max(scale(100),...points.flatMap(r=>[scale(r.raw),scale(r.population)])),x=n=>left+scale(n)/max*(right-left),y=n=>bottom-scale(n)/max*(bottom-top);
+  const ticks=[0,1,10,100,1000,10000,100000,1000000].filter(n=>scale(n)<=max);
+  for(const n of ticks){line(c,x(n),top,x(n),bottom,n===100);line(c,left,y(n),right,y(n),n===100);label(c,x(n),bottom+22,fmt(n),"middle",13);label(c,left-10,y(n)+5,fmt(n),"end",13)}
+  label(c,(left+right)/2,495,"算定回数指数（全国平均100）","middle",15);label(c,left,20,"人口1万人当たり指数（全国平均100）","start",15);
+  for(const r of points){const node=svg("circle",{cx:x(r.raw),cy:y(r.population),r:4,fill:r.population>=100?"#168e86":"#6588b8",opacity:.68});const t=svg("title",{});t.textContent=r.name+"｜算定回数 "+fmt(r.raw)+"｜人口補正 "+fmt(r.population);node.append(t);if(onCode){node.setAttribute("tabindex","0");node.setAttribute("role","button");node.setAttribute("aria-label",t.textContent);node.style.cursor="pointer";node.addEventListener("click",()=>onCode(r.code));node.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onCode(r.code)}})}c.append(node)}
+  note(p,"右上：両指標が平均超過 ／ 左上：人口補正後のみ平均超過 ／ 右下：算定回数のみ平均超過 ／ 左下：両指標が平均未満。破線＝100、軸は log(1＋指数)。緑＝人口補正100以上、青＝100未満。");
+  note(p,"表示 "+fmt(points.length)+" / "+fmt(v.scatterTotal)+" コード（抽出表示）。点を選ぶと個別の診療報酬詳細へ移動します。");
+ }else note(p,"人口補正が可能なコードがありません。");
+ const q=panel("診療報酬区分別｜全国平均を上回るコードの割合","各区分の比較可能なコードのうち、全国平均比が100を超えるコードの割合。算定金額の構成比ではありません。",true);
+ const wrap=el("div",undefined,"overflow:auto");const table=el("table",undefined,"width:100%;border-collapse:collapse;font-size:14px;min-width:520px");const th=el("tr");for(const t of ["区分","算定回数：平均超過 / 比較可能","人口補正：平均超過 / 比較可能"])th.append(el("th",t,"text-align:left;padding:12px;background:#eef4f6;border-bottom:1px solid #dce6eb"));table.append(th);
+ for(const r of v.categories){const tr=el("tr");tr.append(el("td",r.category,"padding:12px;border-bottom:1px solid #e5edf1"));for(const [n,d,color] of [[r.aboveRaw,r.codes,"#168e86"],[r.abovePopulation,r.populationComparable,"#6588b8"]]){const td=el("td",undefined,"padding:12px;border-bottom:1px solid #e5edf1");td.append(el("strong",ratio(n,d)+"（"+fmt(n)+" / "+fmt(d)+"）","font-size:14px"));const track=el("div",undefined,"height:8px;margin-top:6px;border-radius:3px;background:#edf2f5");if(d)track.append(el("div",undefined,"height:100%;border-radius:3px;background:"+color+";width:"+Math.min(100,n/d*100)+"%"));td.append(track);tr.append(td)}table.append(tr)}
+ wrap.append(table);q.append(wrap);
 }
-
 
 function createRegionDashboardController({root,status,api,onCode}){
  let request=null,version=0;
@@ -250,7 +294,7 @@ function initRegionDashboard(){
  const heading=document.createElement("h3");heading.textContent="地域診療ダッシュボード（接続検証版）";
  const status=document.createElement("p");status.setAttribute("role","status");status.textContent="データ未取得";
  const button=document.createElement("button");button.type="button";button.id="region-profile-fetch";button.className="atlas-connect-secondary";button.textContent="算定回数・人口補正グラフを取得";button.style.cssText="display:inline-block;padding:12px 18px;margin:8px 0 16px;background:#117d81;color:#fff;border:0;border-radius:8px;font-weight:700;cursor:pointer";
- const root=document.createElement("div");root.className="region-dashboard-grid";root.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px";
+ const root=document.createElement("div");root.className="region-dashboard-grid";root.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,610px),1fr));gap:20px;align-items:start";
  section.append(heading,status,button,root);anchor.before(section);
  regionDashboardController=createRegionDashboardController({root,status,api,onCode:specialOpenCode});
  button.addEventListener("click",()=>{if(!connected){status.textContent="データ接続が必要です";return}const pref=$("special-pref").value,region=$("special-area").value||pref;if(!region){status.textContent="地域を選択してください";return}regionDashboardController.load({region,scope:$("special-scope").value,grain:region.length===2?"pref":"secondary"})});
