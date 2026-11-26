@@ -339,6 +339,51 @@ function regionTreemapLayout(rows,w,h){
   else{const d=height*f;split(items.slice(0,k),x,y,width,d);split(items.slice(k),x,y+d,width,height-d)}
  }split(valid,0,0,w,h);return out;
 }
+// LQ radar: fixed log2 scale, explicit clipped values and missing-data gaps.
+function regionLqRadius(value){
+ if(!Number.isFinite(value)||value<0)return null;
+ if(value===0)return 0;
+ return Math.max(0,Math.min(1,(Math.log2(value)+2)/4));
+}
+function renderRegionLqRadar(parent,rows,palette){
+ const el=(tag,t,css)=>{const e=document.createElement(tag);if(t!==undefined)e.textContent=t;if(css)e.style.cssText=css;return e};
+ const svg=(tag,attrs,t)=>{const e=document.createElementNS("http://www.w3.org/2000/svg",tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,String(v));if(t!==undefined)e.textContent=t;return e};
+ const format=v=>Number(v).toLocaleString("ja-JP",{maximumFractionDigits:2});
+ const ordered=Object.keys(palette).map(category=>{const r=rows.find(x=>x.category===category);return {category,lq:r&&Number.isFinite(r.nationalShare)&&r.nationalShare>0&&Number.isFinite(r.lq)&&r.lq>=0?r.lq:null}});
+ const p=el("section",undefined,"margin-top:24px;padding-top:20px;border-top:1px solid #dce6eb;min-width:0");
+ p.append(el("h3","地域特性レーダー｜地域特化指数（LQ）","font-size:19px;color:#183b50;margin:0 0 8px"),el("p","全国の参考換算額構成比を1倍とし、各診療報酬区分が地域内で相対的に大きいか小さいかを比較。破線より外側は全国より構成比が大きい区分です。","font-size:14px;color:#506a7b;line-height:1.7;margin-bottom:14px"));
+ if(!ordered.some(r=>r.lq!==null)){p.append(el("p","比較可能なLQがありません。"));parent.append(p);return}
+ const wrap=el("div",undefined,"display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,540px),1fr));gap:20px;align-items:start");p.append(wrap);
+ const c=svg("svg",{viewBox:"0 0 800 680",role:"img","aria-label":"16区分のLQレーダーチャート。全国構成比を基準とする。"});c.style.cssText="display:block;width:100%;height:auto;max-width:100%;overflow:visible";wrap.append(c);
+ const cx=400,cy=340,R=230,N=ordered.length,point=(i,f)=>[cx+R*f*Math.sin(i*2*Math.PI/N),cy-R*f*Math.cos(i*2*Math.PI/N)];
+ const path=pts=>pts.map(a=>a.join(",")).join(" ");
+ for(const [f,label] of [[.25,"0.5倍"],[.5,"1倍"],[.75,"2倍"],[1,"4倍"]]){
+  c.append(svg("polygon",{points:path(ordered.map((_,i)=>point(i,f))),fill:"none",stroke:f===.5?"#526e82":"#dae4e9","stroke-width":f===.5?2.5:1.2,...(f===.5?{"stroke-dasharray":"7 5"}:{})}));
+  c.append(svg("text",{x:cx+7,y:cy-R*f-6,fill:"#526e82","font-size":14},label));
+ }
+ for(let i=0;i<N;i++){const q=point(i,1);c.append(svg("line",{x1:cx,y1:cy,x2:q[0],y2:q[1],stroke:"#dce6eb","stroke-width":1}));}
+ const coords=ordered.map((r,i)=>r.lq===null?null:point(i,regionLqRadius(r.lq)));
+ if(coords.every(Boolean))c.append(svg("polygon",{points:path(coords),fill:"#168e86","fill-opacity":.16,stroke:"#117d81","stroke-width":3,"stroke-linejoin":"round"}));
+ else for(let i=0;i<N;i++){const a=coords[i],b=coords[(i+1)%N];if(a&&b)c.append(svg("line",{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:"#117d81","stroke-width":3}));}
+ for(let i=0;i<N;i++){
+  const r=ordered[i],q=point(i,1.13),x=q[0],y=q[1],anchor=x>cx+40?"start":x<cx-40?"end":"middle";
+  const code=r.category==="K_輸血料"?"K 輸血":r.category==="K_手術"?"K 手術":r.category.split("_")[0];
+  const t=svg("text",{x,y:y-3,"text-anchor":anchor,fill:"#183b50","font-size":17,"font-weight":700},code);c.append(t);
+  c.append(svg("text",{x,y:y+15,"text-anchor":anchor,fill:"#526e82","font-size":13},r.lq===null?"—":format(r.lq)+"倍"));
+  if(coords[i]){const a=coords[i],dot=svg("circle",{cx:a[0],cy:a[1],r:5.5,fill:r.lq>1?"#117d81":"#6588b8",stroke:"#fff","stroke-width":1.4});dot.append(svg("title",{},r.category.replace("_"," ")+"："+format(r.lq)+"倍"+(r.lq>4?"（表示上限）":r.lq<.25?"（表示下限）":"")));c.append(dot)}
+ }
+ const side=el("div",undefined,"min-width:0");wrap.append(side);
+ const legend=el("div",undefined,"display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:#405f70;margin:0 0 12px");
+ for(const [color,label,dashed] of [["#117d81","選択地域",false],["#526e82","全国基準：1倍",true]]){const x=el("span",undefined,"display:flex;align-items:center;gap:7px");x.append(el("span",undefined,"width:25px;border-top:3px "+(dashed?"dashed ":"solid ")+color),el("span",label));legend.append(x)}side.append(legend);
+ const values=el("div",undefined,"display:grid;gap:4px");side.append(values);
+ for(const r of ordered){
+  const row=el("div",undefined,"display:grid;grid-template-columns:minmax(0,1fr) 94px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #e5edf1;background:"+(r.lq!==null&&r.lq>1?"#edf7f5":"#fff")+";font-size:14px");
+  row.append(el("span",r.category.replace("_"," "),"overflow-wrap:anywhere;color:#183b50"),el("strong",r.lq===null?"—":format(r.lq)+"倍"+(r.lq>4?" ↑":r.lq<.25?" ↓":""),"text-align:right;color:"+(r.lq!==null&&r.lq>1?"#087e75":"#506a7b")));values.append(row)
+ }
+ p.append(el("p","目盛りは対数（0.25～4倍）で固定。1倍を中心に、半分と2倍が同じ距離になります。範囲外は端に表示し、表では実値を表示します（↑・↓）。0倍は中心、比較不能は—とし線をつなぎません。面積の大小は合計額や総合評価を表しません。","font-size:13px;line-height:1.7;color:#506a7b;margin:14px 0 0"));
+ parent.append(p);
+}
+
 function renderRegionComposition(panel,d,palette){
  const el=(tag,t,css)=>{const x=document.createElement(tag);if(t!==undefined)x.textContent=t;if(css)x.style.cssText=css;return x};
  const fmt=n=>Number(n).toLocaleString("ja-JP",{maximumFractionDigits:2}),money=n=>fmt(n/1e8)+" 億円";
@@ -380,6 +425,7 @@ function renderRegionComposition(panel,d,palette){
   }
   item.append(bars,el("strong",Number.isFinite(r.lq)?fmt(r.lq)+"倍":"—","font-size:14px;text-align:right;color:"+(r.lq>1?"#087e75":"#506a7b")));compare.append(item);
  }panel.append(compare);
+ renderRegionLqRadar(panel,rows,palette);
 }
 
 function createRegionDashboardController({root,status,api,onCode}){
