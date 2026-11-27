@@ -1,0 +1,27 @@
+name: Audit medical area boundaries
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/audit-boundaries.js"
+      - ".github/workflows/audit-boundaries.yml"
+      - "docs/assets/medical-areas-330.svg"
+permissions:
+  contents: read
+concurrency:
+  group: atlas-boundary-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Audit the actual public boundary file
+        run: node scripts/audit-boundaries.js
