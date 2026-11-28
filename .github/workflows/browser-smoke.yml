@@ -1,0 +1,24 @@
+name: Browser smoke test
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/browser-smoke.cjs"
+      - ".github/workflows/browser-smoke.yml"
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts playwright@1.51.1
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/browser-smoke.cjs
