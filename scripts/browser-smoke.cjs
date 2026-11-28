@@ -30,12 +30,17 @@ const assert=require("node:assert/strict");
  await page.waitForFunction(()=>document.querySelector("#region-area").options.length>1);
  await page.locator("#region-area").selectOption("1701");
  await page.locator("#region-scope").selectOption("exclude");
- // Prevent external navigation while checking the real stored handoff.
- await page.route("https://ri0115.github.io/-ATLAS/#profile",route=>route.abort());
- await page.locator("#region-connect").click({noWaitAfter:true});
- const transfer=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("atlas.region.selection.v1")||"null")).catch(()=>null);
- // Navigation may already have consumed the value; verify on the receiving document if so.
- if(transfer){assert.equal(transfer.pref,"17");assert.equal(transfer.area,"1701");assert.equal(transfer.scope,"exclude")}
+ // Observe the real receiving page, but intercept the external auth navigation.
+ const authRequests=[];
+ await page.route("https://reimbursement-atlas-private.vercel.app/atlas-session/start?*",async route=>{
+  authRequests.push(route.request().url());await route.abort();
+ });
+ await page.locator("#region-connect").click();
+ await page.waitForURL("https://ri0115.github.io/-ATLAS/#profile");
+ await page.waitForFunction(()=>sessionStorage.getItem("atlas.region.selection.v1")!==null);
+ const transfer=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("atlas.region.selection.v1")));
+ assert.equal(transfer.pref,"17");assert.equal(transfer.area,"1701");assert.equal(transfer.scope,"exclude");
+ await page.waitForFunction(()=>document.querySelector("#specialBoard")?.hidden===false);
  assert.deepEqual(errors,[]);
  console.log("ATLAS_BROWSER_PASS "+JSON.stringify({viewport,publicCover:true,navigation:5,subtabs:3,regionSelector:true,authenticatedDataTest:false,transferObserved:!!transfer}));
  await page.close();
